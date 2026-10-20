@@ -244,6 +244,9 @@ function renderForm() {
                     <option value="Logística" selected>Logística</option>
                     <option value="Administración">Administración</option>
                     <option value="Comercial">Comercial</option>
+                    <option value="Recursos Humanos">Recursos Humanos</option>
+                    <option value="Operaciones">Operaciones</option>
+                    <option value="Procesos">Procesos</option>
                     <option value="__OTRA__">Otra (escribir a mano)...</option>
                 </select>
                 <div id="custom_container_${campo.id}" style="display: none; margin-top: 6px;">
