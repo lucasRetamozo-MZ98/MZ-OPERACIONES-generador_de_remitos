@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="shortcut icon" href="assets/logo.ico" />
+    <title>Generador de Remitos — MOTOZUNI S.A.</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="app-container">
+    <!-- BARRA LATERAL: FORMULARIO -->
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <h2>Motozuni S.A.</h2>
+            <p>Generador de Remitos de Equipamiento</p>
+        </div>
+
+        <div class="form-container">
+            <div class="form-group">
+                <label for="tipo_remito">Tipo de Remito</label>
+                <select id="tipo_remito" onchange="renderForm()">
+                    <option value="pc_monitor">1. PC + Monitor</option>
+                    <option value="notebook">2. Notebook</option>
+                    <option value="celular">3. Celular</option>
+                    <option value="auricular">4. Auricular H151</option>
+                    <option value="mouse">5. Mouse</option>
+                    <option value="teclado">6. Teclado / Kit</option>
+                    <option value="wifi">7. Adaptador Wi-Fi</option>
+                    <option value="monitor_solo">8. Monitor Solo</option>
+                    <option value="traslado">9. Traslado entre personas</option>
+                    <option value="baja">10. Baja / Devolución</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="sucursal">Sucursal</label>
+                <select id="sucursal" onchange="onSucursalChange()">
+                    <!-- Se puebla dinámicamente -->
+                </select>
+            </div>
+
+            <div id="dynamic-fields">
+                <!-- Campos dinámicos según selección -->
+            </div>
+
+            <button class="btn-print" onclick="imprimirConNombreSugerido()">
+                <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"></path>
+                    <path d="M6 14h12v8H6z"></path>
+                </svg>
+                Imprimir / Guardar PDF
+            </button>
+        </div>
+    </div>
+
+    <!-- VISTA PREVIA HOJA A4 -->
+    <div class="preview-container">
+        <div class="a4-page" id="document-preview">
+            <!-- El contenido del remito se renderiza en tiempo real -->
+        </div>
+    </div>
+</div>
+
+<script src="models.js"></script>
+<script src="services.js"></script>
+<script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,461 @@
+/* ── Estilos Generales de la Interfaz ──────────────────────────────── */
+:root {
+    --cp: #1a3c6b;
+    --cs: #2e6da4;
+    --ca: #e8f0fb;
+    --cg: #f5f7fa;
+    --ct: #222222;
+    --csu: #888888;
+    --cl: #dddddd;
+    --naranja: #C55A11;
+    --rojo: #8B0000;
+    --verde: #375623;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+}
+
+* {
+    box-sizing: border-box;
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    background-color: #eef2f5;
+    color: var(--ct);
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+}
+
+/* Layout lateral */
+.app-container {
+    display: flex;
+    width: 100%;
+    height: 100vh;
+}
+
+.sidebar {
+    width: 420px;
+    background: #ffffff;
+    border-right: 1px solid #ccc;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 2px 0 10px rgba(0,0,0,0.05);
+    z-index: 10;
+}
+
+.sidebar-header {
+    background-color: var(--cp);
+    color: white;
+    padding: 15px 20px;
+}
+
+.sidebar-header h2 {
+    margin: 0;
+    font-size: 1.1rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.sidebar-header p {
+    margin: 3px 0 0 0;
+    font-size: 0.8rem;
+    opacity: 0.8;
+}
+
+.form-container {
+    padding: 20px;
+    overflow-y: auto;
+    flex-grow: 1;
+}
+
+.form-group {
+    margin-bottom: 12px;
+}
+
+.label-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+}
+
+.label-row label {
+    margin-bottom: 0;
+}
+
+.btn-gen-code {
+    font-size: 0.72rem;
+    color: var(--cs);
+    cursor: pointer;
+    font-weight: 600;
+    text-transform: none;
+    user-select: none;
+    transition: color 0.15s;
+}
+
+.btn-gen-code:hover {
+    color: var(--cp);
+    text-decoration: underline;
+}
+
+/* ── Caja de Código Automático y Edición Manual ── */
+.code-box {
+    background: #f8fafc;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    padding: 6px 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.code-badge {
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-weight: bold;
+    font-size: 0.92rem;
+    color: var(--cp);
+    letter-spacing: 0.5px;
+}
+
+.code-actions {
+    display: flex;
+    gap: 4px;
+}
+
+.btn-code-action {
+    background: #e2e8f0;
+    border: 1px solid #cbd5e1;
+    border-radius: 3px;
+    padding: 3px 7px;
+    font-size: 0.72rem;
+    cursor: pointer;
+    color: var(--ct);
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    transition: background 0.15s, border-color 0.15s;
+    user-select: none;
+}
+
+.btn-code-action:hover {
+    background: #cbd5e1;
+    border-color: #94a3b8;
+}
+
+.btn-code-action.active {
+    background: var(--cs);
+    color: white;
+    border-color: var(--cp);
+}
+
+.code-manual-container {
+    margin-top: 6px;
+}
+
+.form-group label {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: bold;
+    color: var(--cs);
+    margin-bottom: 4px;
+    text-transform: uppercase;
+}
+
+.form-group input::placeholder {
+    color: #a0aec0;
+    font-style: italic;
+    font-size: 0.8rem;
+}
+
+.form-group input, .form-group select, .form-group textarea {
+    width: 100%;
+    padding: 7px 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 0.85rem;
+}
+
+.form-group input:focus, .form-group select:focus {
+    outline: none;
+    border-color: var(--cs);
+    box-shadow: 0 0 3px rgba(46, 109, 164, 0.4);
+}
+
+.grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.btn-print {
+    background-color: #27ae60;
+    color: white;
+    border: none;
+    padding: 12px;
+    font-weight: bold;
+    font-size: 0.95rem;
+    cursor: pointer;
+    width: 100%;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 10px;
+    transition: background 0.2s;
+}
+
+.btn-print:hover {
+    background-color: #219150;
+}
+
+/* ── Previsualización del Remito (Simulación Hoja A4) ──────────────── */
+.preview-container {
+    flex-grow: 1;
+    background-color: #525659;
+    padding: 30px;
+    overflow-y: auto;
+    display: flex;
+    justify-content: center;
+}
+
+.a4-page {
+    background: white;
+    width: 210mm;
+    min-height: 297mm;
+    padding: 12mm 15mm;
+    box-shadow: 0 0 15px rgba(0,0,0,0.3);
+    font-size: 8.5pt;
+    color: var(--ct);
+    box-sizing: border-box;
+}
+
+/* Elementos del Remito */
+.header-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 5px;
+}
+
+.header-title-left {
+    font-size: 14pt;
+    font-weight: bold;
+    color: var(--cp);
+    line-height: 1.1;
+}
+
+.header-sub-left {
+    font-size: 7.5pt;
+    color: var(--csu);
+}
+
+.header-title-right {
+    font-size: 10pt;
+    font-weight: bold;
+    color: var(--cp);
+    text-align: right;
+    line-height: 1.2;
+}
+
+.header-sub-right {
+    font-size: 8pt;
+    color: var(--cs);
+    text-align: right;
+}
+
+.divider-hr {
+    border: none;
+    height: 2px;
+    background-color: var(--cp);
+    margin: 3px 0 5px 0;
+}
+
+.banner {
+    background-color: var(--cp);
+    color: white;
+    text-align: center;
+    font-weight: bold;
+    font-size: 10pt;
+    padding: 6px;
+    margin-bottom: 6px;
+}
+
+.sec-header {
+    background-color: var(--cs);
+    color: white;
+    font-weight: bold;
+    font-size: 8.5pt;
+    padding: 3px 6px;
+    margin-top: 4px;
+    margin-bottom: 0;
+}
+
+.remito-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 4px;
+}
+
+.remito-table td {
+    padding: 3.5px 5px;
+    vertical-align: top;
+    border-bottom: 0.4pt solid var(--cl);
+    font-size: 8pt;
+}
+
+.remito-table tr:nth-child(odd) {
+    background-color: var(--cg);
+}
+
+.remito-table tr:nth-child(even) {
+    background-color: #ffffff;
+}
+
+.lbl-col {
+    width: 18%;
+    font-weight: bold;
+    color: var(--csu);
+    font-size: 7.5pt;
+}
+
+.val-col {
+    width: 32%;
+    font-size: 8.5pt;
+    word-break: break-word;
+}
+
+.conf-text {
+    font-size: 8pt;
+    line-height: 1.5;
+    margin: 8px 0;
+}
+
+/* ── Sector de línea punteada para llenado a mano ── */
+.linea-punteada {
+    display: inline-block;
+    border-bottom: 1.5px dotted #555;
+    min-width: 160px;
+    height: 1.1em;
+    vertical-align: baseline;
+    margin: 0 3px;
+}
+
+.linea-punteada-fecha {
+    min-width: 90px;
+}
+
+.linea-punteada-nombre {
+    min-width: 220px;
+}
+
+.linea-punteada-tabla {
+    width: 95%;
+    min-width: 140px;
+}
+
+.signatures-table {
+    width: 100%;
+    margin-top: 25px;
+    margin-bottom: 8px;
+    border-collapse: collapse;
+}
+
+.signatures-table td {
+    width: 33.33%;
+    text-align: center;
+    vertical-align: bottom;
+    padding: 0 10px;
+}
+
+.sig-line {
+    border-top: 1px solid var(--csu);
+    margin-bottom: 4px;
+    width: 90%;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.sig-label {
+    font-weight: bold;
+    font-size: 8pt;
+    color: var(--csu);
+}
+
+.footer-text {
+    font-size: 6.5pt;
+    color: var(--csu);
+    text-align: center;
+    border-top: 0.5pt solid var(--cl);
+    padding-top: 4px;
+    margin-top: 8px;
+}
+
+/* ── Estilos de Impresión Directa a A4 ────────────────────────────── */
+@media print {
+    @page {
+        size: A4 portrait;
+        margin: 0;
+    }
+
+    * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        color-adjust: exact !important;
+    }
+
+    html, body {
+        width: 100% !important;
+        height: auto !important;
+        min-height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        background: #ffffff !important;
+        overflow: visible !important;
+    }
+
+    .app-container {
+        display: block !important;
+        width: 100% !important;
+        height: auto !important;
+        min-height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: visible !important;
+    }
+
+    .sidebar {
+        display: none !important;
+    }
+
+    .preview-container {
+        display: block !important;
+        width: 100% !important;
+        height: auto !important;
+        min-height: 0 !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        background: none !important;
+        overflow: visible !important;
+    }
+
+    .a4-page {
+        box-shadow: none !important;
+        width: 210mm !important;
+        max-width: 210mm !important;
+        height: auto !important;
+        min-height: 0 !important;
+        padding: 12mm 15mm !important;
+        margin: 0 auto !important;
+        box-sizing: border-box !important;
+        background: #ffffff !important;
+        page-break-after: avoid !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+    }
+}
