@@ -555,7 +555,8 @@ class RemitoFactory {
                     { id: 'nombre', label: 'Asignado a', tipoControl: 'texto', placeholder: 'Ejemplo: Mario Araujo' },
                     { id: 'area', label: 'Área / Equipo', tipoControl: 'area' },
                     { id: 'email', label: 'Email', tipoControl: 'texto', placeholder: 'Ejemplo: usuario@motozuni.com.ar' },
-                    { id: 'fecha', label: 'Fecha', tipoControl: 'fecha', def: todayFecha, placeholder: `Ejemplo: ${todayFecha}` }
+                    { id: 'fecha', label: 'Fecha', tipoControl: 'fecha', def: todayFecha, placeholder: `Ejemplo: ${todayFecha}` },
+                    { id: 'nota', label: 'Nota Adicional', tipoControl: 'texto', placeholder: 'Ejemplo: Incluye pad mouse, auricular, etc.' }
                 ];
 
             case 'notebook':
@@ -572,7 +573,8 @@ class RemitoFactory {
                     { id: 'nombre', label: 'Asignado a', tipoControl: 'texto', placeholder: 'Ejemplo: Mario Araujo' },
                     { id: 'area', label: 'Área', tipoControl: 'area' },
                     { id: 'email', label: 'Email', tipoControl: 'texto', placeholder: 'Ejemplo: usuario@motozuni.com.ar' },
-                    { id: 'fecha', label: 'Fecha', tipoControl: 'fecha', def: todayFecha, placeholder: `Ejemplo: ${todayFecha}` }
+                    { id: 'fecha', label: 'Fecha', tipoControl: 'fecha', def: todayFecha, placeholder: `Ejemplo: ${todayFecha}` },
+                    { id: 'nota', label: 'Nota Adicional', tipoControl: 'texto', placeholder: 'Ejemplo: Incluye mochila protectora' }
                 ];
 
             case 'celular':
