@@ -85,14 +85,16 @@ class Equipamiento {
     #modelo;
     #numeroSerie;
     #estado;
+    #notaAdicional;
 
     /**
      * @param {string} codigo 
      * @param {string} marca 
      * @param {string} modelo 
      * @param {string} numeroSerie 
+     * @param {string} [notaAdicional]
      */
-    constructor(codigo, marca, modelo, numeroSerie) {
+    constructor(codigo, marca, modelo, numeroSerie, notaAdicional = '') {
         if (new.target === Equipamiento) {
             throw new Error("No se puede instanciar directamente la clase abstracta Equipamiento.");
         }
@@ -101,6 +103,7 @@ class Equipamiento {
         this.#modelo = modelo || '—';
         this.#numeroSerie = numeroSerie || 'N/A';
         this.#estado = 'Asignado';
+        this.#notaAdicional = notaAdicional || '';
     }
 
     getCodigo() {
@@ -125,6 +128,14 @@ class Equipamiento {
 
     setEstado(estado) {
         this.#estado = estado;
+    }
+
+    getNotaAdicional() {
+        return this.#notaAdicional;
+    }
+
+    setNotaAdicional(nota) {
+        this.#notaAdicional = nota || '';
     }
 
     /**
@@ -377,15 +388,9 @@ class Accesorio extends Equipamiento {
  * Periférico concreto (Auricular, Mouse, Teclado, Adaptador Wi-Fi, Monitor Solo, etc.)
  */
 class Periferico extends Accesorio {
-    #notaAdicional;
-
     constructor(codigo, marca, modelo, numeroSerie, tipoAccesorio, notaAdicional = '') {
         super(codigo, marca, modelo, numeroSerie, tipoAccesorio);
-        this.#notaAdicional = notaAdicional;
-    }
-
-    getNotaAdicional() {
-        return this.#notaAdicional;
+        this.setNotaAdicional(notaAdicional);
     }
 
     getEspecificaciones() {
@@ -395,7 +400,7 @@ class Periferico extends Accesorio {
             ['Modelo', this.getModelo()],
             ['N° Serie', this.getNumeroSerie() !== '—' && this.getNumeroSerie() !== '' ? this.getNumeroSerie() : '—'],
             ['Estado', this.getEstado()],
-            ['', '']
+            ['Código', this.getCodigo()]
         ];
     }
 }
@@ -413,6 +418,8 @@ class Remito {
     #areaEquipo;
     #email;
     #observaciones;
+    #notaAdicional;
+    #componentesAdicionales;
 
     /**
      * @param {string} idDocumento 
@@ -430,6 +437,8 @@ class Remito {
         this.#areaEquipo = '—';
         this.#email = '—';
         this.#observaciones = '';
+        this.#notaAdicional = '';
+        this.#componentesAdicionales = [];
     }
 
     getIdDocumento() { return this.#idDocumento; }
@@ -447,6 +456,19 @@ class Remito {
 
     getObservaciones() { return this.#observaciones; }
     setObservaciones(observaciones) { this.#observaciones = observaciones || ''; }
+
+    getNotaAdicional() { return this.#notaAdicional; }
+    setNotaAdicional(nota) { this.#notaAdicional = nota || ''; }
+
+    getComponentesAdicionales() { return [...this.#componentesAdicionales]; }
+    agregarComponenteAdicional(equipamiento) {
+        if (equipamiento && equipamiento instanceof Equipamiento) {
+            this.#componentesAdicionales.push(equipamiento);
+        }
+    }
+    setComponentesAdicionales(lista) {
+        this.#componentesAdicionales = Array.isArray(lista) ? [...lista] : [];
+    }
 
     /**
      * @abstract

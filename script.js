@@ -9,21 +9,21 @@ const renderService = new RemitoHtmlRenderService();
 
 const TODAY = new Date().toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
-// Estado de códigos automáticos/manuales { inputId: { sigla, modo, autoCodigo, manualSufijo } }
+// Estado de códigos automáticos/manuales { inputId: { sigla, sucursal, numero, siglaDefault, modo } }
 const codigosEstado = {};
 
 // Lista de componentes adicionales agregados al remito
-// Cada item: { uid, tipo, sigla, campos: {marca, modelo, sn, nota, cod} }
+// Cada item: { uid, tipo, sigla, campos: { marca, modelo, nota } }
 let componentesAdicionales = [];
 let uidCounter = 0;
 
 // Mapeo de tipo de componente adicional → sigla y etiqueta
 const TIPOS_COMPONENTE_ADICIONAL = [
-    { value: 'auricular', label: 'Auricular', sigla: 'AU' },
-    { value: 'mouse',     label: 'Mouse',     sigla: 'MS' },
-    { value: 'teclado',   label: 'Teclado',   sigla: 'TC' },
-    { value: 'wifi',      label: 'Adaptador Wi-Fi', sigla: 'WF' },
-    { value: 'monitor_solo', label: 'Monitor', sigla: 'MO' },
+    { value: 'auricular',    label: 'Auricular',        sigla: 'AU' },
+    { value: 'mouse',        label: 'Mouse',            sigla: 'MS' },
+    { value: 'teclado',      label: 'Teclado',          sigla: 'TC' },
+    { value: 'wifi',         label: 'Adaptador Wi-Fi',  sigla: 'WF' },
+    { value: 'monitor_solo', label: 'Monitor',          sigla: 'MO' },
 ];
 
 // ── Inicializar select de sucursales ──────────────────────────────────────────
@@ -65,32 +65,37 @@ function obtenerSucursalActual() {
     return repositorioSucursales.buscarPorCodigo(Number(select.value)) || new Sucursal(28, 'SARANDI');
 }
 
-// ── Lógica de Código (automático / prefijo fijo + sufijo manual) ──────────────
+// ── Lógica de Códigos ([Sigla]-[Sucursal]-[Número]) ──────────────────────────
 
 /**
- * Genera un sufijo de 4 dígitos aleatorio
+ * Genera un número aleatorio de 4 dígitos
  */
 function generarSufijo() {
     return String(Math.floor(Math.random() * 10000)).padStart(4, '0');
 }
 
 /**
- * Construye un código a partir de sigla, id de sucursal y sufijo
+ * Construye un código según la especificación: [SIGLA]-[SUCURSAL]-[NUMERO]
  */
-function construirCodigo(sigla, idSuc, sufijo) {
-    return `${sigla}-${idSuc}-${sufijo}`;
+function construirCodigo(sigla, sucursal, numero) {
+    const s = (sigla !== undefined && sigla !== null && String(sigla).trim() !== '') ? String(sigla).trim().toUpperCase() : 'XX';
+    const suc = (sucursal !== undefined && sucursal !== null && String(sucursal).trim() !== '') ? String(sucursal).trim() : '0';
+    const n = (numero !== undefined && numero !== null && String(numero).trim() !== '') ? String(numero).trim() : '0000';
+    return `${s}-${suc}-${n}`;
 }
 
 /**
  * Inicializa el estado de un campo de código
  */
-function initEstadoCodigo(inputId, sigla, sufijo = null) {
-    const suf = sufijo || generarSufijo();
+function initEstadoCodigo(inputId, sigla, sucursalId = null, numero = null) {
+    const num = numero || generarSufijo();
+    const suc = String(sucursalId !== null && sucursalId !== undefined ? sucursalId : obtenerSucursalActual().getId());
     codigosEstado[inputId] = {
-        sigla,
-        modo: 'auto',   // 'auto' | 'manual'
-        sufijo: suf,
-        manualSufijo: suf
+        sigla: sigla,
+        sucursal: suc,
+        numero: num,
+        siglaDefault: sigla,
+        modo: 'auto' // 'auto' | 'manual'
     };
 }
 
@@ -100,8 +105,7 @@ function initEstadoCodigo(inputId, sigla, sufijo = null) {
 function getValorCodigo(inputId) {
     const estado = codigosEstado[inputId];
     if (!estado) return '—';
-    const suf = estado.modo === 'auto' ? estado.sufijo : (estado.manualSufijo || estado.sufijo);
-    return construirCodigo(estado.sigla, obtenerSucursalActual().getId(), suf);
+    return construirCodigo(estado.sigla, estado.sucursal, estado.numero);
 }
 
 /**
@@ -111,27 +115,33 @@ function sincronizarDisplayCodigo(inputId) {
     const estado = codigosEstado[inputId];
     if (!estado) return;
 
-    const suc = obtenerSucursalActual();
-    const prefijo = `${estado.sigla}-${suc.getId()}-`;
-    const sufijo = estado.modo === 'auto' ? estado.sufijo : (estado.manualSufijo || estado.sufijo);
-    const codigoFinal = `${prefijo}${sufijo}`;
+    const codigoFinal = construirCodigo(estado.sigla, estado.sucursal, estado.numero);
 
     const badge = document.getElementById(`display_${inputId}`);
     const inputOculto = document.getElementById(inputId);
     const manualContainer = document.getElementById(`manual_container_${inputId}`);
     const btnToggle = document.getElementById(`btn_toggle_${inputId}`);
-    const prefijoBadge = document.getElementById(`prefix_${inputId}`);
-    const sufijoInput = document.getElementById(`sufijo_input_${inputId}`);
+
+    const siglaInput = document.getElementById(`sigla_input_${inputId}`);
+    const sucInput = document.getElementById(`suc_input_${inputId}`);
+    const numInput = document.getElementById(`sufijo_input_${inputId}`);
 
     if (badge) badge.innerText = codigoFinal;
     if (inputOculto) inputOculto.value = codigoFinal;
 
-    if (prefijoBadge) prefijoBadge.innerText = prefijo;
-    if (sufijoInput) sufijoInput.value = sufijo;
+    if (siglaInput && document.activeElement !== siglaInput) {
+        siglaInput.value = estado.sigla;
+    }
+    if (sucInput && document.activeElement !== sucInput) {
+        sucInput.value = estado.sucursal;
+    }
+    if (numInput && document.activeElement !== numInput) {
+        numInput.value = estado.numero;
+    }
 
     if (manualContainer && btnToggle) {
         if (estado.modo === 'manual') {
-            manualContainer.style.display = 'flex';
+            manualContainer.style.display = 'block';
             btnToggle.classList.add('active');
             btnToggle.innerText = '⚙️ Automático';
         } else {
@@ -142,68 +152,95 @@ function sincronizarDisplayCodigo(inputId) {
     }
 }
 
-/** Regenera el sufijo aleatorio */
+/**
+ * Escucha cambios en cualquiera de los tres segmentos del código manual:
+ * 1. Sigla (ej: PC)
+ * 2. Sucursal (ej: 28)
+ * 3. Número (ej: 2381)
+ */
+function onCodigoSegmentChange(inputId, segment) {
+    const estado = codigosEstado[inputId];
+    if (!estado) return;
+
+    const siglaInput = document.getElementById(`sigla_input_${inputId}`);
+    const sucInput = document.getElementById(`suc_input_${inputId}`);
+    const numInput = document.getElementById(`sufijo_input_${inputId}`);
+
+    if (siglaInput) estado.sigla = siglaInput.value.trim().toUpperCase();
+    if (sucInput) estado.sucursal = sucInput.value.trim();
+    if (numInput) estado.numero = numInput.value.trim();
+
+    // Sincronización especial PC + Monitor:
+    // Si se modifica la sucursal o el número de la PC, sincronizarlo al Monitor
+    if (inputId === 'cod_pc') {
+        const estadoMo = codigosEstado['cod_mo'];
+        if (estadoMo) {
+            estadoMo.sucursal = estado.sucursal;
+            estadoMo.numero = estado.numero;
+            sincronizarDisplayCodigo('cod_mo');
+        }
+    }
+
+    sincronizarDisplayCodigo(inputId);
+    updatePreview();
+}
+
+/**
+ * Regenera el número aleatorio (botón "🎲 Nuevo")
+ */
 function regenerarCodigo(inputId) {
     const estado = codigosEstado[inputId];
     if (!estado) return;
-    estado.sufijo = generarSufijo();
-    estado.manualSufijo = estado.sufijo;
-    estado.modo = 'auto';
+
+    const nuevoNum = generarSufijo();
+    estado.numero = nuevoNum;
+
+    // Si está en auto, asegurar que sigla y sucursal correspondan a los defaults
+    if (estado.modo === 'auto') {
+        estado.sigla = estado.siglaDefault;
+        estado.sucursal = String(obtenerSucursalActual().getId());
+    }
+
+    // Sincronizar PC + Monitor
+    if (inputId === 'cod_pc') {
+        const estadoMo = codigosEstado['cod_mo'];
+        if (estadoMo) {
+            estadoMo.numero = nuevoNum;
+            if (estadoMo.modo === 'auto') {
+                estadoMo.sucursal = estado.sucursal;
+            }
+            sincronizarDisplayCodigo('cod_mo');
+        }
+    }
+
     sincronizarDisplayCodigo(inputId);
     updatePreview();
 }
 
-/** Alterna entre modo automático y modo manual (prefijo fijo + sufijo editable) */
+/**
+ * Alterna entre modo automático y modo manual (permite editar sigla, sucursal y número)
+ */
 function toggleModoCodigo(inputId) {
     const estado = codigosEstado[inputId];
     if (!estado) return;
+
     estado.modo = estado.modo === 'auto' ? 'manual' : 'auto';
-    sincronizarDisplayCodigo(inputId);
-    updatePreview();
-}
 
-/** El usuario edita el sufijo a mano */
-function onSufijoManualInput(inputId) {
-    const estado = codigosEstado[inputId];
-    if (!estado) return;
-    const sufijoInput = document.getElementById(`sufijo_input_${inputId}`);
-    estado.manualSufijo = sufijoInput ? sufijoInput.value : estado.sufijo;
-    sincronizarDisplayCodigo(inputId);
-    updatePreview();
-}
-
-/**
- * Para PC+Monitor: cuando el sufijo de la PC cambia, lo propaga al Monitor.
- */
-function onSufijoManualPcInput() {
-    const estadoPc = codigosEstado['cod_pc'];
-    if (!estadoPc) return;
-    const sufijoInput = document.getElementById('sufijo_input_cod_pc');
-    const nuevo = sufijoInput ? sufijoInput.value : estadoPc.sufijo;
-    estadoPc.manualSufijo = nuevo;
-
-    // Propagar al monitor
-    const estadoMo = codigosEstado['cod_mo'];
-    if (estadoMo && estadoMo.modo === 'manual') {
-        estadoMo.manualSufijo = nuevo;
-        const sufijoMo = document.getElementById('sufijo_input_cod_mo');
-        if (sufijoMo) sufijoMo.value = nuevo;
+    if (estado.modo === 'auto') {
+        // Al regresar a modo automático, restablecer sigla y sucursal según la sucursal seleccionada
+        estado.sigla = estado.siglaDefault;
+        estado.sucursal = String(obtenerSucursalActual().getId());
     }
 
-    sincronizarDisplayCodigo('cod_pc');
-    sincronizarDisplayCodigo('cod_mo');
+    sincronizarDisplayCodigo(inputId);
     updatePreview();
 }
 
 /**
- * Renderiza el bloque HTML de un campo de código
+ * Renderiza el bloque HTML del campo de código con soporte de edición segmentada completa
  */
-function renderCampoCodigoHTML(campo, autoCode, suf, suc) {
-    const prefijo = `${campo.sigla}-${suc.getId()}-`;
-    const esPcMonitor = campo.id === 'cod_pc' || campo.id === 'cod_mo';
-    const onInputFn = esPcMonitor && campo.id === 'cod_pc'
-        ? `onSufijoManualPcInput()`
-        : `onSufijoManualInput('${campo.id}')`;
+function renderCampoCodigoHTML(campo, autoCode, estado, suc) {
+    const isManual = estado && estado.modo === 'manual';
 
     return `
         <div class="label-row">
@@ -213,13 +250,18 @@ function renderCampoCodigoHTML(campo, autoCode, suf, suc) {
             <span class="code-badge" id="display_${campo.id}">${autoCode}</span>
             <div class="code-actions">
                 <button type="button" class="btn-code-action" onclick="regenerarCodigo('${campo.id}')" title="Generar otro número aleatorio">🎲 Nuevo</button>
-                <button type="button" class="btn-code-action" id="btn_toggle_${campo.id}" onclick="toggleModoCodigo('${campo.id}')" title="Escribir el código a mano">✏️ Anotar a mano</button>
+                <button type="button" class="btn-code-action ${isManual ? 'active' : ''}" id="btn_toggle_${campo.id}" onclick="toggleModoCodigo('${campo.id}')" title="Modificar sigla, sucursal o número a mano">
+                    ${isManual ? '⚙️ Automático' : '✏️ Anotar a mano'}
+                </button>
             </div>
         </div>
-        <div class="code-manual-container" id="manual_container_${campo.id}" style="display: none;">
-            <div style="display: flex; align-items: center; gap: 0; border: 1px solid #ccc; border-radius: 4px; overflow: hidden;">
-                <span id="prefix_${campo.id}" style="background: #e2e8f0; padding: 7px 8px; font-family: monospace; font-weight: bold; font-size: 0.85rem; color: var(--cp); white-space: nowrap; border-right: 1px solid #ccc;">${prefijo}</span>
-                <input type="text" id="sufijo_input_${campo.id}" value="${suf}" maxlength="6" placeholder="0000" style="flex: 1; border: none; padding: 7px 8px; font-family: monospace; font-size: 0.92rem; font-weight: bold; outline: none;" oninput="${onInputFn}">
+        <div class="code-manual-container" id="manual_container_${campo.id}" style="display: ${isManual ? 'block' : 'none'};">
+            <div class="code-manual-segments">
+                <input type="text" class="code-seg-input code-seg-sigla" id="sigla_input_${campo.id}" value="${estado.sigla}" maxlength="4" placeholder="${campo.sigla}" title="Sigla del componente (ej: ${campo.sigla})" oninput="onCodigoSegmentChange('${campo.id}', 'sigla')">
+                <span class="code-seg-sep">-</span>
+                <input type="text" class="code-seg-input code-seg-suc" id="suc_input_${campo.id}" value="${estado.sucursal}" maxlength="4" placeholder="${suc.getId()}" title="Código de sucursal (ej: ${suc.getId()})" oninput="onCodigoSegmentChange('${campo.id}', 'sucursal')">
+                <span class="code-seg-sep">-</span>
+                <input type="text" class="code-seg-input code-seg-num" id="sufijo_input_${campo.id}" value="${estado.numero}" maxlength="8" placeholder="0000" title="Número de serie o aleatorio" oninput="onCodigoSegmentChange('${campo.id}', 'numero')">
             </div>
         </div>
         <input type="hidden" id="${campo.id}" value="${autoCode}">
@@ -282,25 +324,17 @@ function agregarComponenteAdicional() {
     const suc = obtenerSucursalActual();
     const tipo = TIPOS_COMPONENTE_ADICIONAL[0];
     const uid = ++uidCounter;
-    const suf = generarSufijo();
-    const cod = construirCodigo(tipo.sigla, suc.getId(), suf);
+    const num = generarSufijo();
+    const inputId = `extra_cod_${uid}`;
 
     componentesAdicionales.push({
         uid,
         tipo: tipo.value,
         sigla: tipo.sigla,
-        sufijo: suf,
-        manualSufijo: suf,
-        modoCodigo: 'auto',
         campos: { marca: '', modelo: '', nota: '' }
     });
 
-    codigosEstado[`extra_cod_${uid}`] = {
-        sigla: tipo.sigla,
-        modo: 'auto',
-        sufijo: suf,
-        manualSufijo: suf
-    };
+    initEstadoCodigo(inputId, tipo.sigla, suc.getId(), num);
 
     renderComponentesAdicionales();
     updatePreview();
@@ -324,55 +358,15 @@ function onTipoComponenteChange(uid) {
     comp.tipo = nuevoTipo;
     comp.sigla = def.sigla;
 
-    const estado = codigosEstado[`extra_cod_${uid}`];
+    const inputId = `extra_cod_${uid}`;
+    const estado = codigosEstado[inputId];
     if (estado) {
-        estado.sigla = def.sigla;
-        sincronizarDisplayCodigoExtra(uid);
+        estado.siglaDefault = def.sigla;
+        if (estado.modo === 'auto') {
+            estado.sigla = def.sigla;
+        }
+        sincronizarDisplayCodigo(inputId);
     }
-    updatePreview();
-}
-
-function sincronizarDisplayCodigoExtra(uid) {
-    const inputId = `extra_cod_${uid}`;
-    sincronizarDisplayCodigo(inputId);
-    const comp = componentesAdicionales.find(c => c.uid === uid);
-    if (comp) {
-        const estado = codigosEstado[inputId];
-        comp.sufijo = estado ? estado.sufijo : comp.sufijo;
-        comp.modoCodigo = estado ? estado.modo : 'auto';
-    }
-}
-
-function regenerarCodigoExtra(uid) {
-    const inputId = `extra_cod_${uid}`;
-    const estado = codigosEstado[inputId];
-    const comp = componentesAdicionales.find(c => c.uid === uid);
-    if (!estado || !comp) return;
-    const suf = generarSufijo();
-    estado.sufijo = suf;
-    estado.manualSufijo = suf;
-    estado.modo = 'auto';
-    comp.sufijo = suf;
-    sincronizarDisplayCodigo(inputId);
-    updatePreview();
-}
-
-function toggleModoCodigoExtra(uid) {
-    const inputId = `extra_cod_${uid}`;
-    const estado = codigosEstado[inputId];
-    if (!estado) return;
-    estado.modo = estado.modo === 'auto' ? 'manual' : 'auto';
-    sincronizarDisplayCodigo(inputId);
-    updatePreview();
-}
-
-function onSufijoExtraInput(uid) {
-    const inputId = `extra_cod_${uid}`;
-    const estado = codigosEstado[inputId];
-    if (!estado) return;
-    const sufijoInput = document.getElementById(`sufijo_input_${inputId}`);
-    estado.manualSufijo = sufijoInput ? sufijoInput.value : estado.sufijo;
-    sincronizarDisplayCodigo(inputId);
     updatePreview();
 }
 
@@ -397,11 +391,15 @@ function renderComponentesAdicionales() {
     componentesAdicionales.forEach(comp => {
         const uid = comp.uid;
         const inputId = `extra_cod_${uid}`;
-        const estado = codigosEstado[inputId];
-        const suf = estado ? estado.sufijo : comp.sufijo;
-        const sigla = estado ? estado.sigla : comp.sigla;
-        const prefijo = `${sigla}-${suc.getId()}-`;
-        const codigoFull = `${prefijo}${suf}`;
+        const estado = codigosEstado[inputId] || {
+            sigla: comp.sigla,
+            sucursal: String(suc.getId()),
+            numero: generarSufijo(),
+            siglaDefault: comp.sigla,
+            modo: 'auto'
+        };
+        const codigoFull = construirCodigo(estado.sigla, estado.sucursal, estado.numero);
+        const isManual = estado.modo === 'manual';
 
         const tiposOpts = TIPOS_COMPONENTE_ADICIONAL.map(t =>
             `<option value="${t.value}" ${t.value === comp.tipo ? 'selected' : ''}>${t.label}</option>`
@@ -420,14 +418,19 @@ function renderComponentesAdicionales() {
                 <div class="code-box">
                     <span class="code-badge" id="display_${inputId}">${codigoFull}</span>
                     <div class="code-actions">
-                        <button type="button" class="btn-code-action" onclick="regenerarCodigoExtra(${uid})">🎲 Nuevo</button>
-                        <button type="button" class="btn-code-action" id="btn_toggle_${inputId}" onclick="toggleModoCodigoExtra(${uid})">✏️ Anotar a mano</button>
+                        <button type="button" class="btn-code-action" onclick="regenerarCodigo('${inputId}')" title="Generar otro número">🎲 Nuevo</button>
+                        <button type="button" class="btn-code-action ${isManual ? 'active' : ''}" id="btn_toggle_${inputId}" onclick="toggleModoCodigo('${inputId}')" title="Modificar sigla, sucursal o número a mano">
+                            ${isManual ? '⚙️ Automático' : '✏️ Anotar a mano'}
+                        </button>
                     </div>
                 </div>
-                <div class="code-manual-container" id="manual_container_${inputId}" style="display: none;">
-                    <div style="display: flex; align-items: center; gap: 0; border: 1px solid #ccc; border-radius: 4px; overflow: hidden;">
-                        <span id="prefix_${inputId}" style="background: #e2e8f0; padding: 7px 8px; font-family: monospace; font-weight: bold; font-size: 0.85rem; color: var(--cp); white-space: nowrap; border-right: 1px solid #ccc;">${prefijo}</span>
-                        <input type="text" id="sufijo_input_${inputId}" value="${suf}" maxlength="6" placeholder="0000" style="flex: 1; border: none; padding: 7px 8px; font-family: monospace; font-size: 0.92rem; font-weight: bold; outline: none;" oninput="onSufijoExtraInput(${uid})">
+                <div class="code-manual-container" id="manual_container_${inputId}" style="display: ${isManual ? 'block' : 'none'};">
+                    <div class="code-manual-segments">
+                        <input type="text" class="code-seg-input code-seg-sigla" id="sigla_input_${inputId}" value="${estado.sigla}" maxlength="4" placeholder="${comp.sigla}" title="Sigla" oninput="onCodigoSegmentChange('${inputId}', 'sigla')">
+                        <span class="code-seg-sep">-</span>
+                        <input type="text" class="code-seg-input code-seg-suc" id="suc_input_${inputId}" value="${estado.sucursal}" maxlength="4" placeholder="${suc.getId()}" title="Código de sucursal" oninput="onCodigoSegmentChange('${inputId}', 'sucursal')">
+                        <span class="code-seg-sep">-</span>
+                        <input type="text" class="code-seg-input code-seg-num" id="sufijo_input_${inputId}" value="${estado.numero}" maxlength="8" placeholder="0000" title="Número" oninput="onCodigoSegmentChange('${inputId}', 'numero')">
                     </div>
                 </div>
                 <input type="hidden" id="${inputId}" value="${codigoFull}">
@@ -460,26 +463,27 @@ function renderForm() {
 
     container.innerHTML = '';
 
-    // Para PC+Monitor, el sufijo de PC y MO debe ser compartido
-    let sufijoPcMonitor = null;
+    // Para PC+Monitor, el número aleatorio de PC y Monitor se sincroniza inicialmente
+    let numeroPcMonitor = null;
 
     campos.forEach(campo => {
         const group = document.createElement('div');
         group.className = 'form-group';
 
         if (campo.tipoControl === 'codigo') {
-            const suf = (() => {
+            const num = (() => {
                 if (tipo === 'pc_monitor') {
-                    if (!sufijoPcMonitor) sufijoPcMonitor = generarSufijo();
-                    return sufijoPcMonitor;
+                    if (!numeroPcMonitor) numeroPcMonitor = generarSufijo();
+                    return numeroPcMonitor;
                 }
                 return generarSufijo();
             })();
 
-            initEstadoCodigo(campo.id, campo.sigla, suf);
-            const autoCode = construirCodigo(campo.sigla, sucursal.getId(), suf);
+            initEstadoCodigo(campo.id, campo.sigla, sucursal.getId(), num);
+            const estado = codigosEstado[campo.id];
+            const autoCode = construirCodigo(campo.sigla, sucursal.getId(), num);
 
-            group.innerHTML = renderCampoCodigoHTML(campo, autoCode, suf, sucursal);
+            group.innerHTML = renderCampoCodigoHTML(campo, autoCode, estado, sucursal);
 
         } else if (campo.tipoControl === 'area') {
             group.innerHTML = renderCampoAreaHTML(campo);
@@ -506,19 +510,13 @@ function renderForm() {
 
 function onSucursalChange() {
     const sucursal = obtenerSucursalActual();
-    const sucursalId = sucursal.getId();
+    const sucursalId = String(sucursal.getId());
 
-    // Para PC+Monitor: si ambos están en modo auto, mantener el mismo sufijo
-    if (codigosEstado['cod_pc'] && codigosEstado['cod_mo'] &&
-        codigosEstado['cod_pc'].modo === 'auto') {
-        // Solo actualizar el prefijo (el sufijo no cambia), sincronizar display
-        sincronizarDisplayCodigo('cod_pc');
-        sincronizarDisplayCodigo('cod_mo');
-    }
-
+    // Actualizar sucursal en todos los códigos que estén en modo automático
     Object.keys(codigosEstado).forEach(inputId => {
         const estado = codigosEstado[inputId];
         if (estado && estado.modo === 'auto') {
+            estado.sucursal = sucursalId;
             sincronizarDisplayCodigo(inputId);
         }
     });
@@ -530,10 +528,10 @@ function onSucursalChange() {
 // ── Cambio de tipo de remito ─────────────────────────────────────────────────
 
 function onTipoRemitoChange() {
-    // Limpiar componentes adicionales al cambiar el tipo principal
+    // Limpiar componentes adicionales y estados al cambiar el tipo principal
     componentesAdicionales = [];
     Object.keys(codigosEstado).forEach(k => {
-        if (k.startsWith('extra_')) delete codigosEstado[k];
+        delete codigosEstado[k];
     });
     renderForm();
     renderComponentesAdicionales();
@@ -544,16 +542,19 @@ function onTipoRemitoChange() {
 function buildRemitoConExtras(tipo, sucursal) {
     const remito = RemitoFactory.crearRemito(tipo, v, sucursal);
 
-    // Adjuntar los componentes adicionales como lista
+    // Adjuntar los componentes adicionales como entidades de dominio
     if (componentesAdicionales.length > 0) {
-        const extras = componentesAdicionales.map(comp => {
+        componentesAdicionales.forEach(comp => {
             const inputId = `extra_cod_${comp.uid}`;
             const estado = codigosEstado[inputId];
-            const suf = estado ? (estado.modo === 'auto' ? estado.sufijo : (estado.manualSufijo || estado.sufijo)) : comp.sufijo;
-            const cod = construirCodigo(estado ? estado.sigla : comp.sigla, sucursal.getId(), suf);
+            const cod = estado 
+                ? construirCodigo(estado.sigla, estado.sucursal, estado.numero)
+                : construirCodigo(comp.sigla, sucursal.getId(), generarSufijo());
+
             const def = TIPOS_COMPONENTE_ADICIONAL.find(t => t.value === comp.tipo);
             const tipoLabel = def ? def.label : comp.tipo;
-            return new Periferico(
+
+            const extraPeriferico = new Periferico(
                 cod,
                 comp.campos.marca || '—',
                 comp.campos.modelo || '—',
@@ -561,8 +562,8 @@ function buildRemitoConExtras(tipo, sucursal) {
                 tipoLabel,
                 comp.campos.nota || ''
             );
+            remito.agregarComponenteAdicional(extraPeriferico);
         });
-        remito._componentesAdicionales = extras;
     }
 
     return remito;
@@ -581,7 +582,7 @@ function updatePreview() {
     document.title = obtenerNombreSugeridoPDF();
 }
 
-// ── Nombre sugerido PDF ───────────────────────────────────────────────────────
+// ── Nombre sugerido PDF e Impresión ──────────────────────────────────────────
 
 function obtenerNombreSugeridoPDF() {
     const tipo = document.getElementById('tipo_remito').value;
@@ -597,5 +598,14 @@ function obtenerNombreSugeridoPDF() {
     }
 }
 
-// Inicialización
+function imprimirConNombreSugerido() {
+    const originalTitle = document.title;
+    document.title = obtenerNombreSugeridoPDF();
+    window.print();
+    setTimeout(() => {
+        document.title = originalTitle;
+    }, 1000);
+}
+
+// ── Inicialización ───────────────────────────────────────────────────────────
 renderForm();

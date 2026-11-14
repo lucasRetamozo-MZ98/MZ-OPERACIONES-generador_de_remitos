@@ -20,7 +20,7 @@
         <div class="form-container">
             <div class="form-group">
                 <label for="tipo_remito">Tipo de Remito</label>
-                <select id="tipo_remito" onchange="renderForm()">
+                <select id="tipo_remito" onchange="onTipoRemitoChange()">
                     <option value="pc_monitor">1. PC + Monitor</option>
                     <option value="notebook">2. Notebook</option>
                     <option value="celular">3. Celular</option>
@@ -43,6 +43,17 @@
 
             <div id="dynamic-fields">
                 <!-- Campos dinámicos según selección -->
+            </div>
+
+            <!-- Sección de Componentes Adicionales -->
+            <div class="seccion-adicionales" id="seccion-adicionales-container">
+                <div class="seccion-adicionales-header">
+                    <label class="seccion-title">Componentes Adicionales</label>
+                    <button type="button" class="btn-add-comp" onclick="agregarComponenteAdicional()" title="Agregar otro dispositivo o periférico al remito">
+                        + Agregar Componente
+                    </button>
+                </div>
+                <div id="componentes-adicionales-lista"></div>
             </div>
 
             <button class="btn-print" onclick="imprimirConNombreSugerido()">

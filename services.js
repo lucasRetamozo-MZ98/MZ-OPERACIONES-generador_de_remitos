@@ -211,16 +211,38 @@ class RemitoHtmlRenderService extends IRemitoRenderService {
     }
 
     renderTablaDatos(remito) {
+        let html = '';
         if (remito instanceof RemitoTraslado) {
-            return this.#renderDatosTraslado(remito);
+            html = this.#renderDatosTraslado(remito);
         } else if (remito instanceof RemitoBaja) {
-            return this.#renderDatosBaja(remito);
+            html = this.#renderDatosBaja(remito);
         } else if (remito instanceof RemitoPcMonitor) {
-            return this.#renderDatosPcMonitor(remito);
+            html = this.#renderDatosPcMonitor(remito);
         } else if (remito instanceof RemitoEquipamientoEstandar) {
-            return this.#renderDatosEquipamientoEstandar(remito);
+            html = this.#renderDatosEquipamientoEstandar(remito);
         }
-        return '';
+
+        // Renderizado de componentes adicionales agregados al remito
+        const extras = (remito && typeof remito.getComponentesAdicionales === 'function')
+            ? remito.getComponentesAdicionales()
+            : (remito ? (remito._componentesAdicionales || []) : []);
+
+        if (Array.isArray(extras) && extras.length > 0) {
+            extras.forEach(extra => {
+                const tipoDesc = extra.getTipoDescripcion().toUpperCase();
+                const codDesc = extra.getCodigo();
+                html += `
+                    <div class="sec-header">${tipoDesc} — ${codDesc}</div>
+                    ${this.renderTablaEspecificaciones(extra.getEspecificaciones())}
+                `;
+                const notaExtra = extra.getNotaAdicional ? extra.getNotaAdicional() : '';
+                if (notaExtra && notaExtra !== '—' && String(notaExtra).trim() !== '') {
+                    html += `<div style="font-size:7pt; color:var(--csu); margin-top:4px;">* ${notaExtra}</div>`;
+                }
+            });
+        }
+
+        return html;
     }
 
     #renderDatosPcMonitor(remito) {
@@ -237,6 +259,12 @@ class RemitoHtmlRenderService extends IRemitoRenderService {
             ['', '']
         ];
 
+        let notaHtml = '';
+        const nota = remito.getNotaAdicional ? remito.getNotaAdicional() : '';
+        if (nota && nota !== '—' && String(nota).trim() !== '') {
+            notaHtml = `<div style="font-size:7pt; color:var(--csu); margin-top:4px;">* ${nota}</div>`;
+        }
+
         return `
             <div class="banner">RECIBO DE ENTREGA DE DISPOSITIVOS</div>
 
@@ -248,6 +276,7 @@ class RemitoHtmlRenderService extends IRemitoRenderService {
 
             <div class="sec-header">MONITOR — ${mo.getCodigo()}</div>
             ${this.renderTablaEspecificaciones(mo.getEspecificaciones())}
+            ${notaHtml}
         `;
     }
 
@@ -273,8 +302,11 @@ class RemitoHtmlRenderService extends IRemitoRenderService {
         }
 
         let notaExtra = '';
-        if (eq instanceof Periferico && eq.getNotaAdicional() && eq.getNotaAdicional() !== '—') {
-            notaExtra = `<div style="font-size:7pt; color:var(--csu); margin-top:4px;">* ${eq.getNotaAdicional()}</div>`;
+        const notaEq = (eq && typeof eq.getNotaAdicional === 'function') ? eq.getNotaAdicional() : '';
+        const notaRemito = (remito && typeof remito.getNotaAdicional === 'function') ? remito.getNotaAdicional() : '';
+        const notaFinal = notaEq || notaRemito;
+        if (notaFinal && notaFinal !== '—' && String(notaFinal).trim() !== '') {
+            notaExtra = `<div style="font-size:7pt; color:var(--csu); margin-top:4px;">* ${notaFinal}</div>`;
         }
 
         const tituloSeccion = eq ? `${eq.getTipoDescripcion().toUpperCase()} — ${eq.getCodigo()}` : 'DISPOSITIVO';
@@ -712,6 +744,7 @@ class RemitoFactory {
                 remito.setAsignadoA(v('nombre'));
                 remito.setAreaEquipo(v('area'));
                 remito.setEmail(v('email'));
+                remito.setNotaAdicional(v('nota'));
                 return remito;
             }
 
@@ -720,10 +753,12 @@ class RemitoFactory {
                     v('cod'), v('marca'), v('modelo'), v('sn'),
                     v('cpu'), v('ram'), v('disco'), v('so'), v('cargador')
                 );
+                nb.setNotaAdicional(v('nota'));
                 const remito = new RemitoEquipamientoEstandar(nb.getCodigo(), fecha, sucursal, nb);
                 remito.setAsignadoA(v('nombre'));
                 remito.setAreaEquipo(v('area'));
                 remito.setEmail(v('email'));
+                remito.setNotaAdicional(v('nota'));
                 return remito;
             }
 

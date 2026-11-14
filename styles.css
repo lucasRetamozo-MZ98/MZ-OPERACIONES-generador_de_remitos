@@ -396,6 +396,155 @@ body {
     margin-top: 8px;
 }
 
+/* ── Segmentos del Código Manual ─────────────────────────────────── */
+.code-manual-segments {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    margin-top: 6px;
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    padding: 3px 6px;
+}
+
+.code-seg-input {
+    border: 1px solid #e2e8f0;
+    border-radius: 3px;
+    padding: 5px 4px;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-weight: bold;
+    font-size: 0.88rem;
+    color: var(--cp);
+    background: #f8fafc;
+    outline: none;
+    transition: border-color 0.15s, background-color 0.15s;
+    box-sizing: border-box;
+}
+
+.code-seg-input:focus {
+    border-color: var(--cs);
+    background: #ffffff;
+    box-shadow: 0 0 2px rgba(46, 109, 164, 0.4);
+}
+
+.code-seg-sigla {
+    width: 58px;
+    text-align: center;
+    text-transform: uppercase;
+}
+
+.code-seg-suc {
+    width: 48px;
+    text-align: center;
+}
+
+.code-seg-num {
+    flex: 1;
+    min-width: 65px;
+    text-align: left;
+    padding-left: 8px;
+}
+
+.code-seg-sep {
+    font-weight: bold;
+    color: #64748b;
+    font-size: 1rem;
+    user-select: none;
+}
+
+/* ── Sección de Componentes Adicionales ───────────────────────────── */
+.seccion-adicionales {
+    margin-top: 15px;
+    margin-bottom: 15px;
+    border-top: 2px dashed #cbd5e1;
+    padding-top: 12px;
+}
+
+.seccion-adicionales-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.seccion-title {
+    font-size: 0.82rem;
+    font-weight: bold;
+    color: var(--cp);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.btn-add-comp {
+    background: var(--cs);
+    color: #ffffff;
+    border: none;
+    border-radius: 4px;
+    padding: 6px 12px;
+    font-size: 0.75rem;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background 0.15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.btn-add-comp:hover {
+    background: var(--cp);
+}
+
+.comp-adicional-card {
+    background: #f8fafc;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    padding: 10px;
+    margin-bottom: 12px;
+    position: relative;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+
+.comp-adicional-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    gap: 8px;
+}
+
+.comp-adicional-header select {
+    font-weight: bold;
+    color: var(--cp);
+    background: #ffffff;
+    padding: 5px 8px;
+    border: 1px solid #94a3b8;
+    border-radius: 4px;
+    font-size: 0.82rem;
+    flex: 1;
+}
+
+.btn-eliminar-comp {
+    background: #fee2e2;
+    color: #b91c1c;
+    border: 1px solid #fca5a5;
+    border-radius: 4px;
+    width: 26px;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85rem;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+
+.btn-eliminar-comp:hover {
+    background: #ef4444;
+    color: #ffffff;
+}
+
 /* ── Estilos de Impresión Directa a A4 ────────────────────────────── */
 @media print {
     @page {
