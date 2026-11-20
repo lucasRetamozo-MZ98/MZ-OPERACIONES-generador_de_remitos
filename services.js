@@ -30,7 +30,8 @@ const SUCURSALES_DATOS = [
     { id: 29, nombre: "BENAVIDEZ" },
     { id: 30, nombre: "CAMPANA" },
     { id: 31, nombre: "SAN MIGUEL" },
-    { id: 32, nombre: "MORON" }
+    { id: 32, nombre: "MORON" },
+    { id: 33, nombre: "VARELA" }
 ];
 
 /**
