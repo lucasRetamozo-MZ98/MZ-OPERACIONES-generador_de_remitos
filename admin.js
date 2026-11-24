@@ -5,23 +5,26 @@
  */
 
 const SUPABASE_SETUP_SQL = `-- Copiar y ejecutar en Supabase -> SQL Editor -> New query
+-- Todas las tablas utilizan clave primaria numérica autoincremental (IDENTITY)
 CREATE TABLE IF NOT EXISTS public.sucursales (
-    id INTEGER PRIMARY KEY,
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    codigo INTEGER NOT NULL UNIQUE,
     nombre TEXT NOT NULL,
     activa BOOLEAN NOT NULL DEFAULT true,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS public.sectores (
-    id TEXT PRIMARY KEY,
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     nombre TEXT NOT NULL UNIQUE,
     orden INTEGER NOT NULL DEFAULT 0,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS public.tipos_componente (
-    id TEXT PRIMARY KEY,
-    nombre TEXT NOT NULL,
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    slug TEXT NOT NULL UNIQUE,
+    nombre TEXT NOT NULL UNIQUE,
     tiene_codigo BOOLEAN NOT NULL DEFAULT true,
     sigla TEXT NOT NULL DEFAULT '',
     es_sistema BOOLEAN NOT NULL DEFAULT false,
@@ -29,10 +32,11 @@ CREATE TABLE IF NOT EXISTS public.tipos_componente (
 );
 
 CREATE TABLE IF NOT EXISTS public.plantillas (
-    id TEXT PRIMARY KEY,
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    slug TEXT NOT NULL UNIQUE,
     nombre TEXT NOT NULL,
     orden INTEGER NOT NULL DEFAULT 100,
-    tipo_componente_id TEXT REFERENCES public.tipos_componente(id) ON DELETE SET NULL,
+    tipo_componente_id BIGINT REFERENCES public.tipos_componente(id) ON DELETE SET NULL,
     tipo_flujo TEXT NOT NULL DEFAULT 'entrega',
     usar_como_remito BOOLEAN NOT NULL DEFAULT true,
     usar_como_adicional BOOLEAN NOT NULL DEFAULT false,
@@ -42,6 +46,15 @@ CREATE TABLE IF NOT EXISTS public.plantillas (
     es_sistema BOOLEAN NOT NULL DEFAULT false,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE INDEX IF NOT EXISTS idx_plantillas_tipo_componente_id
+    ON public.plantillas (tipo_componente_id);
+
+GRANT USAGE ON SCHEMA public TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE
+    public.sucursales, public.sectores, public.tipos_componente, public.plantillas
+TO anon, authenticated;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated;
 
 ALTER TABLE public.sucursales ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sectores ENABLE ROW LEVEL SECURITY;
@@ -161,7 +174,7 @@ class AdminPanelController {
         ).join('');
 
         const filas = plantillas.map(p => {
-            const tipoObj = p.tipo_componente_id ? tipoMap[p.tipo_componente_id] : null;
+            const tipoObj = p.tipo_componente_id ? tipoMap[Number(p.tipo_componente_id)] : null;
             const tipoNombre = tipoObj ? tipoObj.nombre : 'Personalizado';
             const badgeCodigo = p.tiene_codigo
                 ? `<span class="tag tag-code">Código: ${escapeHtml(p.sigla_codigo || 'EQ')}-SUC-####</span>`
@@ -174,6 +187,7 @@ class AdminPanelController {
                 <div class="admin-card-row">
                     <div class="admin-card-info">
                         <div class="admin-card-title">
+                            <span class="tag tag-gray">#${p.id}</span>
                             <strong>${escapeHtml(p.nombre)}</strong>
                             <span class="tag tag-gray">${escapeHtml(tipoNombre)}</span>
                             ${badgeCodigo}
@@ -187,9 +201,9 @@ class AdminPanelController {
                         </div>
                     </div>
                     <div class="admin-card-actions">
-                        <button type="button" class="btn-adm btn-adm-secondary" onclick="adminPanel.editarPlantilla('${escapeHtml(p.id)}')">✏️ Editar</button>
-                        <button type="button" class="btn-adm btn-adm-outline" onclick="adminPanel.crearPlantillaDesdeBase('${escapeHtml(p.id)}')" title="Crear nueva plantilla copiando esta como base">📋 Usar como base</button>
-                        <button type="button" class="btn-adm btn-adm-danger" onclick="adminPanel.eliminarPlantilla('${escapeHtml(p.id)}')" title="Eliminar plantilla">🗑️</button>
+                        <button type="button" class="btn-adm btn-adm-secondary" onclick="adminPanel.editarPlantilla(${p.id})">✏️ Editar</button>
+                        <button type="button" class="btn-adm btn-adm-outline" onclick="adminPanel.crearPlantillaDesdeBase(${p.id})" title="Crear nueva plantilla copiando esta como base">📋 Usar como base</button>
+                        <button type="button" class="btn-adm btn-adm-danger" onclick="adminPanel.eliminarPlantilla(${p.id})" title="Eliminar plantilla">🗑️</button>
                     </div>
                 </div>
             `;
@@ -223,10 +237,11 @@ class AdminPanelController {
         const primerTipo = tipos[0] || null;
         this.#esNuevaPlantilla = true;
         this.#plantillaDraft = {
-            id: '',
+            id: null,
+            slug: '',
             nombre: '',
             orden: this.#store.obtenerPlantillas().length + 1,
-            tipo_componente_id: primerTipo ? primerTipo.id : '',
+            tipo_componente_id: primerTipo ? primerTipo.id : null,
             tipo_flujo: 'entrega',
             usar_como_remito: true,
             usar_como_adicional: true,
@@ -278,7 +293,8 @@ class AdminPanelController {
         const base = this.#store.buscarPlantillaPorId(baseId);
         if (!base) return;
         const copia = clonarProfundo(base.toJSON());
-        copia.id = '';
+        copia.id = null;
+        copia.slug = '';
         copia.nombre = `${base.nombre} (Copia)`;
         copia.es_sistema = false;
         copia.orden = this.#store.obtenerPlantillas().length + 1;
@@ -314,7 +330,8 @@ class AdminPanelController {
         };
 
         d.nombre = val('tpl_nombre').trim();
-        d.tipo_componente_id = val('tpl_tipo_comp') || null;
+        const tcRaw = val('tpl_tipo_comp');
+        d.tipo_componente_id = tcRaw ? Number(tcRaw) : null;
         d.tipo_flujo = val('tpl_flujo') || 'entrega';
         d.usar_como_remito = chk('tpl_usar_remito');
         d.usar_como_adicional = chk('tpl_usar_adicional');
@@ -631,7 +648,7 @@ class AdminPanelController {
         const d = this.#plantillaDraft;
         const tipos = this.#store.obtenerTiposComponente();
         const tiposOpts = tipos.map(t =>
-            `<option value="${escapeHtml(t.id)}" ${t.id === d.tipo_componente_id ? 'selected' : ''}>${escapeHtml(t.nombre)} ${t.tiene_codigo ? `(${t.sigla})` : '(Sin código)'}</option>`
+            `<option value="${t.id}" ${Number(t.id) === Number(d.tipo_componente_id) ? 'selected' : ''}>${escapeHtml(t.nombre)} ${t.tiene_codigo ? `(${t.sigla})` : '(Sin código)'}</option>`
         ).join('');
 
         const secPrincipal = d.config.secciones[0];
@@ -843,12 +860,13 @@ class AdminPanelController {
     #renderTabSucursales() {
         const sucursales = this.#store.obtenerSucursales();
         const editObj = this.#editandoSucursalId !== null
-            ? this.#store.buscarSucursalPorCodigo(this.#editandoSucursalId)
+            ? this.#store.buscarSucursalPorId(this.#editandoSucursalId)
             : null;
 
         const filas = sucursales.map(s => `
             <tr>
-                <td><b>${s.getId()}</b></td>
+                <td><span class="tag tag-gray">#${s.getId()}</span></td>
+                <td><b>${s.getCodigo()}</b></td>
                 <td>${escapeHtml(s.getNombre())}</td>
                 <td>${escapeHtml(s.getNombreCompleto())}</td>
                 <td class="td-actions">
@@ -860,9 +878,9 @@ class AdminPanelController {
 
         return `
             <div class="admin-inline-form">
-                <h4>${editObj ? `✏️ Editando Sucursal Cód. ${editObj.getId()}` : '+ Agregar Nueva Sucursal'}</h4>
+                <h4>${editObj ? `✏️ Editando Sucursal #${editObj.getId()} (Cód. ${editObj.getCodigo()})` : '+ Agregar Nueva Sucursal'}</h4>
                 <div class="adm-grid-form">
-                    <input type="number" id="adm_suc_id" min="0" value="${editObj ? editObj.getId() : ''}" ${editObj ? 'disabled' : ''} placeholder="Código (ej: 34)">
+                    <input type="number" id="adm_suc_codigo" min="0" value="${editObj ? editObj.getCodigo() : ''}" placeholder="Código (ej: 34)">
                     <input type="text" id="adm_suc_nombre" value="${editObj ? escapeHtml(editObj.getNombre()) : ''}" placeholder="Nombre (ej: AVELLANEDA)">
                     <button type="button" class="btn-adm btn-adm-primary" onclick="adminPanel.guardarSucursal()">${editObj ? 'Guardar Cambios' : '+ Agregar'}</button>
                     ${editObj ? `<button type="button" class="btn-adm btn-adm-outline" onclick="adminPanel.cancelarEditSucursal()">Cancelar</button>` : ''}
@@ -871,6 +889,7 @@ class AdminPanelController {
             <table class="admin-table">
                 <thead>
                     <tr>
+                        <th style="width:70px;">ID</th>
                         <th style="width:90px;">Código</th>
                         <th>Nombre</th>
                         <th>Título en Remito</th>
@@ -883,7 +902,7 @@ class AdminPanelController {
     }
 
     editarSucursal(id) {
-        this.#editandoSucursalId = id;
+        this.#editandoSucursalId = Number(id);
         this.render();
     }
 
@@ -893,16 +912,18 @@ class AdminPanelController {
     }
 
     async guardarSucursal() {
-        const idVal = this.#editandoSucursalId !== null
-            ? this.#editandoSucursalId
-            : document.getElementById('adm_suc_id')?.value;
+        const codigoVal = document.getElementById('adm_suc_codigo')?.value;
         const nombreVal = document.getElementById('adm_suc_nombre')?.value;
 
         try {
-            if (idVal === '' || idVal === null || idVal === undefined) {
+            if (codigoVal === '' || codigoVal === null || codigoVal === undefined) {
                 throw new Error('Ingresá el código numérico de la sucursal.');
             }
-            await this.#store.guardarSucursal(Number(idVal), nombreVal);
+            await this.#store.guardarSucursal({
+                id: this.#editandoSucursalId,
+                codigo: Number(codigoVal),
+                nombre: nombreVal
+            });
             this.#editandoSucursalId = null;
             this.mostrarMensaje('Sucursal guardada correctamente.', 'ok');
             this.#notificarCambio();
@@ -913,11 +934,11 @@ class AdminPanelController {
     }
 
     async eliminarSucursal(id) {
-        const suc = this.#store.buscarSucursalPorCodigo(id);
+        const suc = this.#store.buscarSucursalPorId(id);
         if (!suc) return;
-        if (!confirm(`¿Eliminar la sucursal "${suc.getNombre()}" (Cód. ${id})?`)) return;
+        if (!confirm(`¿Eliminar la sucursal "${suc.getNombre()}" (Cód. ${suc.getCodigo()})?`)) return;
         try {
-            await this.#store.eliminarSucursal(id);
+            await this.#store.eliminarSucursal(suc.getId());
             this.mostrarMensaje('Sucursal eliminada.', 'ok');
             this.#notificarCambio();
             this.render();
@@ -932,21 +953,22 @@ class AdminPanelController {
 
     #renderTabSectores() {
         const sectores = this.#store.obtenerSectores();
-        const editObj = this.#editandoSectorId ? this.#store.buscarSectorPorId(this.#editandoSectorId) : null;
+        const editObj = this.#editandoSectorId !== null ? this.#store.buscarSectorPorId(this.#editandoSectorId) : null;
 
         const filas = sectores.map(s => `
             <tr>
+                <td><span class="tag tag-gray">#${s.getId()}</span></td>
                 <td>${escapeHtml(s.getNombre())}</td>
                 <td class="td-actions">
-                    <button type="button" class="btn-adm btn-adm-secondary btn-sm" onclick="adminPanel.editarSector('${escapeHtml(s.getId())}')">✏️ Editar</button>
-                    <button type="button" class="btn-adm btn-adm-danger btn-sm" onclick="adminPanel.eliminarSector('${escapeHtml(s.getId())}')">🗑️</button>
+                    <button type="button" class="btn-adm btn-adm-secondary btn-sm" onclick="adminPanel.editarSector(${s.getId()})">✏️ Editar</button>
+                    <button type="button" class="btn-adm btn-adm-danger btn-sm" onclick="adminPanel.eliminarSector(${s.getId()})">🗑️</button>
                 </td>
             </tr>
         `).join('');
 
         return `
             <div class="admin-inline-form">
-                <h4>${editObj ? `✏️ Editando Sector` : '+ Agregar Nuevo Sector / Área'}</h4>
+                <h4>${editObj ? `✏️ Editando Sector #${editObj.getId()}` : '+ Agregar Nuevo Sector / Área'}</h4>
                 <div class="adm-grid-form">
                     <input type="text" id="adm_sec_nombre" value="${editObj ? escapeHtml(editObj.getNombre()) : ''}" placeholder="Nombre del sector (ej: Sistemas / IT, Posventa...)" style="grid-column: span 2;">
                     <button type="button" class="btn-adm btn-adm-primary" onclick="adminPanel.guardarSector()">${editObj ? 'Guardar Cambios' : '+ Agregar'}</button>
@@ -956,6 +978,7 @@ class AdminPanelController {
             <table class="admin-table">
                 <thead>
                     <tr>
+                        <th style="width:70px;">ID</th>
                         <th>Sector / Área</th>
                         <th style="width:160px;">Acciones</th>
                     </tr>
@@ -966,7 +989,7 @@ class AdminPanelController {
     }
 
     editarSector(id) {
-        this.#editandoSectorId = id;
+        this.#editandoSectorId = Number(id);
         this.render();
     }
 
@@ -977,10 +1000,10 @@ class AdminPanelController {
 
     async guardarSector() {
         const nombre = document.getElementById('adm_sec_nombre')?.value;
-        const existente = this.#editandoSectorId ? this.#store.buscarSectorPorId(this.#editandoSectorId) : null;
+        const existente = this.#editandoSectorId !== null ? this.#store.buscarSectorPorId(this.#editandoSectorId) : null;
         try {
             await this.#store.guardarSector({
-                id: existente ? existente.getId() : '',
+                id: existente ? existente.getId() : null,
                 nombre,
                 orden: existente ? existente.getOrden() : this.#store.obtenerSectores().length + 1
             });
@@ -998,7 +1021,7 @@ class AdminPanelController {
         if (!sec) return;
         if (!confirm(`¿Eliminar el sector "${sec.getNombre()}"?`)) return;
         try {
-            await this.#store.eliminarSector(id);
+            await this.#store.eliminarSector(sec.getId());
             this.mostrarMensaje('Sector eliminado.', 'ok');
             this.#notificarCambio();
             this.render();
@@ -1013,15 +1036,16 @@ class AdminPanelController {
 
     #renderTabComponentes() {
         const tipos = this.#store.obtenerTiposComponente();
-        const editObj = this.#editandoTipoId ? this.#store.buscarTipoComponentePorId(this.#editandoTipoId) : null;
+        const editObj = this.#editandoTipoId !== null ? this.#store.buscarTipoComponentePorId(this.#editandoTipoId) : null;
 
         const filas = tipos.map(t => `
             <tr>
+                <td><span class="tag tag-gray">#${t.id}</span></td>
                 <td><b>${escapeHtml(t.nombre)}</b></td>
                 <td>${t.tiene_codigo ? `<span class="tag tag-code">Sí (${escapeHtml(t.sigla)})</span>` : `<span class="tag tag-nocode">Sin código</span>`}</td>
                 <td class="td-actions">
-                    <button type="button" class="btn-adm btn-adm-secondary btn-sm" onclick="adminPanel.editarTipoComponente('${escapeHtml(t.id)}')">✏️ Editar</button>
-                    <button type="button" class="btn-adm btn-adm-danger btn-sm" onclick="adminPanel.eliminarTipoComponente('${escapeHtml(t.id)}')">🗑️</button>
+                    <button type="button" class="btn-adm btn-adm-secondary btn-sm" onclick="adminPanel.editarTipoComponente(${t.id})">✏️ Editar</button>
+                    <button type="button" class="btn-adm btn-adm-danger btn-sm" onclick="adminPanel.eliminarTipoComponente(${t.id})">🗑️</button>
                 </td>
             </tr>
         `).join('');
@@ -1030,7 +1054,7 @@ class AdminPanelController {
 
         return `
             <div class="admin-inline-form">
-                <h4>${editObj ? `✏️ Editando Tipo de Componente` : '+ Agregar Nuevo Tipo de Componente'}</h4>
+                <h4>${editObj ? `✏️ Editando Tipo de Componente #${editObj.id}` : '+ Agregar Nuevo Tipo de Componente'}</h4>
                 <div class="adm-grid-form-comp">
                     <input type="text" id="adm_tc_nombre" value="${editObj ? escapeHtml(editObj.nombre) : ''}" placeholder="Nombre (ej: Chip de Celular, Impresora)">
                     <label class="chk-inline">
@@ -1045,6 +1069,7 @@ class AdminPanelController {
             <table class="admin-table">
                 <thead>
                     <tr>
+                        <th style="width:70px;">ID</th>
                         <th>Tipo de Componente</th>
                         <th>Código / Sigla por defecto</th>
                         <th style="width:160px;">Acciones</th>
@@ -1056,7 +1081,7 @@ class AdminPanelController {
     }
 
     editarTipoComponente(id) {
-        this.#editandoTipoId = id;
+        this.#editandoTipoId = Number(id);
         this.render();
     }
 
@@ -1069,9 +1094,11 @@ class AdminPanelController {
         const nombre = document.getElementById('adm_tc_nombre')?.value;
         const tiene_codigo = document.getElementById('adm_tc_tiene_cod')?.checked;
         const sigla = document.getElementById('adm_tc_sigla')?.value;
+        const existente = this.#editandoTipoId !== null ? this.#store.buscarTipoComponentePorId(this.#editandoTipoId) : null;
         try {
             await this.#store.guardarTipoComponente({
-                id: this.#editandoTipoId || '',
+                id: existente ? existente.id : null,
+                slug: existente ? existente.slug : '',
                 nombre,
                 tiene_codigo,
                 sigla
@@ -1090,7 +1117,7 @@ class AdminPanelController {
         if (!t) return;
         if (!confirm(`¿Eliminar el tipo de componente "${t.nombre}"?`)) return;
         try {
-            await this.#store.eliminarTipoComponente(id);
+            await this.#store.eliminarTipoComponente(t.id);
             this.mostrarMensaje('Tipo de componente eliminado.', 'ok');
             this.#notificarCambio();
             this.render();

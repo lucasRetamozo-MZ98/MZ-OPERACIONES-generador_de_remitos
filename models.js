@@ -31,14 +31,17 @@ class CodigoGenerador {
 // ── SUCURSAL ──────────────────────────────────────────────────────────────────
 class Sucursal {
     #id;
+    #codigo;
     #nombre;
 
     /**
-     * @param {number} id Código o ID de la sucursal
+     * @param {number} id Clave primaria autoincremental de BD
      * @param {string} nombre Nombre de la sucursal
+     * @param {number} [codigo] Código operativo de sucursal (ej: 28 para SARANDI)
      */
-    constructor(id, nombre) {
+    constructor(id, nombre, codigo = undefined) {
         this.#id = Number(id);
+        this.#codigo = codigo !== undefined && codigo !== null ? Number(codigo) : Number(id);
         this.#nombre = nombre;
     }
 
@@ -47,7 +50,7 @@ class Sucursal {
     }
 
     getCodigo() {
-        return this.#id;
+        return this.#codigo;
     }
 
     get id() {
@@ -55,7 +58,7 @@ class Sucursal {
     }
 
     get codigo() {
-        return this.#id;
+        return this.#codigo;
     }
 
     getNombre() {
@@ -71,6 +74,14 @@ class Sucursal {
             return this.#nombre;
         }
         return `MOTOZUNI S. A. ${this.#nombre}`;
+    }
+
+    toJSON() {
+        return {
+            id: this.#id,
+            codigo: this.#codigo,
+            nombre: this.#nombre
+        };
     }
 }
 
@@ -621,7 +632,7 @@ class Sector {
     #orden;
 
     constructor(id, nombre, orden = 0) {
-        this.#id = String(id || '').trim();
+        this.#id = id !== undefined && id !== null && id !== '' ? Number(id) : null;
         this.#nombre = String(nombre || '').trim();
         this.#orden = Number(orden) || 0;
     }
@@ -647,13 +658,15 @@ class Sector {
  */
 class TipoComponente {
     #id;
+    #slug;
     #nombre;
     #tieneCodigo;
     #sigla;
     #esSistema;
 
-    constructor(id, nombre, tieneCodigo = true, sigla = '', esSistema = false) {
-        this.#id = String(id || '').trim();
+    constructor(id, nombre, tieneCodigo = true, sigla = '', esSistema = false, slug = '') {
+        this.#id = id !== undefined && id !== null && id !== '' ? Number(id) : null;
+        this.#slug = String(slug || '').trim();
         this.#nombre = String(nombre || '').trim();
         this.#tieneCodigo = Boolean(tieneCodigo);
         this.#sigla = this.#tieneCodigo ? String(sigla || '').trim().toUpperCase() : '';
@@ -661,12 +674,14 @@ class TipoComponente {
     }
 
     getId() { return this.#id; }
+    getSlug() { return this.#slug; }
     getNombre() { return this.#nombre; }
     tieneCodigo() { return this.#tieneCodigo; }
     getSigla() { return this.#sigla; }
     esSistema() { return this.#esSistema; }
 
     get id() { return this.#id; }
+    get slug() { return this.#slug; }
     get nombre() { return this.#nombre; }
     get tiene_codigo() { return this.#tieneCodigo; }
     get sigla() { return this.#sigla; }
@@ -675,6 +690,7 @@ class TipoComponente {
     toJSON() {
         return {
             id: this.#id,
+            slug: this.#slug,
             nombre: this.#nombre,
             tiene_codigo: this.#tieneCodigo,
             sigla: this.#sigla,
@@ -688,10 +704,13 @@ class TipoComponente {
  */
 class PlantillaRemito {
     constructor(data = {}) {
-        this.id = String(data.id || '').trim();
+        this.id = data.id !== undefined && data.id !== null && data.id !== '' ? Number(data.id) : null;
+        this.slug = String(data.slug || '').trim();
         this.nombre = String(data.nombre || '').trim();
         this.orden = Number(data.orden ?? 100);
-        this.tipo_componente_id = data.tipo_componente_id || null;
+        this.tipo_componente_id = data.tipo_componente_id !== undefined && data.tipo_componente_id !== null && data.tipo_componente_id !== ''
+            ? Number(data.tipo_componente_id)
+            : null;
         this.tipo_flujo = data.tipo_flujo || 'entrega'; // 'entrega' | 'traslado' | 'baja'
         this.usar_como_remito = data.usar_como_remito !== undefined ? Boolean(data.usar_como_remito) : true;
         this.usar_como_adicional = Boolean(data.usar_como_adicional);
@@ -767,6 +786,7 @@ class PlantillaRemito {
     toJSON() {
         return {
             id: this.id,
+            slug: this.slug,
             nombre: this.nombre,
             orden: this.orden,
             tipo_componente_id: this.tipo_componente_id,

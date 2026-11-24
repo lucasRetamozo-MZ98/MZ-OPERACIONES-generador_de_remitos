@@ -31,13 +31,17 @@ class RepositorioSucursalMemoria extends IRepositorioSucursal {
 
     constructor(lista = (typeof DEFAULT_SUCURSALES !== 'undefined' ? DEFAULT_SUCURSALES : [])) {
         super();
-        this.#sucursales = lista.map(item => (item instanceof Sucursal ? item : new Sucursal(item.id, item.nombre)));
+        this.#sucursales = lista.map((item, idx) => (
+            item instanceof Sucursal
+                ? item
+                : new Sucursal(item.id ?? (idx + 1), item.nombre, item.codigo ?? item.id)
+        ));
     }
 
     obtenerTodas() { return [...this.#sucursales]; }
     buscarPorCodigo(codigo) {
         const cod = Number(codigo);
-        return this.#sucursales.find(s => s.getId() === cod) || null;
+        return this.#sucursales.find(s => s.getCodigo() === cod) || null;
     }
 }
 

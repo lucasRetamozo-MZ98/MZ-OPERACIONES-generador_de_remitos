@@ -1,66 +1,66 @@
 /**
  * DATOS INICIALES (SEMILLA) — MOTOZUNI S.A.
- * Se utilizan para poblar la base de datos por primera vez o restaurar valores originales.
+ * Los IDs primarios numéricos se autoincrementan automáticamente en la base de datos.
  */
 
 const DEFAULT_SUCURSALES = [
-    { id: 0,  nombre: 'CENTRAL' },
-    { id: 10, nombre: 'DOMINICO' },
-    { id: 11, nombre: 'LANUS' },
-    { id: 12, nombre: 'MONTE GRANDE' },
-    { id: 13, nombre: 'SAN JUSTO' },
-    { id: 14, nombre: 'LUIS GUILON' },
-    { id: 15, nombre: 'CABA 1' },
-    { id: 16, nombre: 'LOMAS DE ZAMORA' },
-    { id: 17, nombre: 'QUILMES' },
-    { id: 19, nombre: 'LANUS 2' },
-    { id: 20, nombre: 'LUIS GUILLON 2' },
-    { id: 21, nombre: 'CABA2' },
-    { id: 22, nombre: 'SAN FERNANDO' },
-    { id: 23, nombre: 'SAN MARTIN' },
-    { id: 24, nombre: 'LA PLATA' },
-    { id: 25, nombre: 'QUILMES 2' },
-    { id: 27, nombre: 'VICENTE LOPEZ' },
-    { id: 28, nombre: 'SARANDI' },
-    { id: 29, nombre: 'BENAVIDEZ' },
-    { id: 30, nombre: 'CAMPANA' },
-    { id: 31, nombre: 'SAN MIGUEL' },
-    { id: 32, nombre: 'MORON' },
-    { id: 33, nombre: 'VARELA' }
+    { codigo: 0,  nombre: 'CENTRAL' },
+    { codigo: 10, nombre: 'DOMINICO' },
+    { codigo: 11, nombre: 'LANUS' },
+    { codigo: 12, nombre: 'MONTE GRANDE' },
+    { codigo: 13, nombre: 'SAN JUSTO' },
+    { codigo: 14, nombre: 'LUIS GUILON' },
+    { codigo: 15, nombre: 'CABA 1' },
+    { codigo: 16, nombre: 'LOMAS DE ZAMORA' },
+    { codigo: 17, nombre: 'QUILMES' },
+    { codigo: 19, nombre: 'LANUS 2' },
+    { codigo: 20, nombre: 'LUIS GUILLON 2' },
+    { codigo: 21, nombre: 'CABA2' },
+    { codigo: 22, nombre: 'SAN FERNANDO' },
+    { codigo: 23, nombre: 'SAN MARTIN' },
+    { codigo: 24, nombre: 'LA PLATA' },
+    { codigo: 25, nombre: 'QUILMES 2' },
+    { codigo: 27, nombre: 'VICENTE LOPEZ' },
+    { codigo: 28, nombre: 'SARANDI' },
+    { codigo: 29, nombre: 'BENAVIDEZ' },
+    { codigo: 30, nombre: 'CAMPANA' },
+    { codigo: 31, nombre: 'SAN MIGUEL' },
+    { codigo: 32, nombre: 'MORON' },
+    { codigo: 33, nombre: 'VARELA' }
 ];
 
 const DEFAULT_SECTORES = [
-    { id: 'administracion',          nombre: 'Administración',            orden: 1 },
-    { id: 'comercial',               nombre: 'Comercial',                 orden: 2 },
-    { id: 'gerencia_administracion', nombre: 'Gerencia - Administración', orden: 3 },
-    { id: 'gerencia_comercial',      nombre: 'Gerencia - Comercial',      orden: 4 },
-    { id: 'gerencia_operaciones',    nombre: 'Gerencia - Operaciones',    orden: 5 },
-    { id: 'gestoria',                nombre: 'Gestoría',                  orden: 6 },
-    { id: 'logistica',               nombre: 'Logística',                 orden: 7 },
-    { id: 'operaciones',             nombre: 'Operaciones',               orden: 8 },
-    { id: 'procesos',                nombre: 'Procesos',                  orden: 9 },
-    { id: 'recursos_humanos',        nombre: 'Recursos Humanos',          orden: 10 }
+    { nombre: 'Administración',            orden: 1 },
+    { nombre: 'Comercial',                 orden: 2 },
+    { nombre: 'Gerencia - Administración', orden: 3 },
+    { nombre: 'Gerencia - Comercial',      orden: 4 },
+    { nombre: 'Gerencia - Operaciones',    orden: 5 },
+    { nombre: 'Gestoría',                  orden: 6 },
+    { nombre: 'Logística',                 orden: 7 },
+    { nombre: 'Operaciones',               orden: 8 },
+    { nombre: 'Procesos',                  orden: 9 },
+    { nombre: 'Recursos Humanos',          orden: 10 }
 ];
 
 const DEFAULT_TIPOS_COMPONENTE = [
-    { id: 'computadora', nombre: 'Computadora',      tiene_codigo: true,  sigla: 'PC', es_sistema: true },
-    { id: 'monitor',     nombre: 'Monitor',          tiene_codigo: true,  sigla: 'MO', es_sistema: true },
-    { id: 'notebook',    nombre: 'Notebook',         tiene_codigo: true,  sigla: 'NB', es_sistema: true },
-    { id: 'celular',     nombre: 'Celular',          tiene_codigo: true,  sigla: 'CE', es_sistema: true },
-    { id: 'auricular',   nombre: 'Auricular',        tiene_codigo: true,  sigla: 'AU', es_sistema: true },
-    { id: 'mouse',       nombre: 'Mouse',            tiene_codigo: true,  sigla: 'MS', es_sistema: true },
-    { id: 'teclado',     nombre: 'Teclado',          tiene_codigo: true,  sigla: 'TC', es_sistema: true },
-    { id: 'wifi',        nombre: 'Adaptador Wi-Fi',  tiene_codigo: true,  sigla: 'WF', es_sistema: true },
-    { id: 'chip_sim',    nombre: 'Chip SIM / Línea', tiene_codigo: false, sigla: '',   es_sistema: true },
-    { id: 'general',     nombre: 'Dispositivo General', tiene_codigo: true, sigla: 'EQ', es_sistema: true }
+    { slug: 'computadora', nombre: 'Computadora',         tiene_codigo: true,  sigla: 'PC', es_sistema: true },
+    { slug: 'monitor',     nombre: 'Monitor',             tiene_codigo: true,  sigla: 'MO', es_sistema: true },
+    { slug: 'notebook',    nombre: 'Notebook',            tiene_codigo: true,  sigla: 'NB', es_sistema: true },
+    { slug: 'celular',     nombre: 'Celular',             tiene_codigo: true,  sigla: 'CE', es_sistema: true },
+    { slug: 'auricular',   nombre: 'Auricular',           tiene_codigo: true,  sigla: 'AU', es_sistema: true },
+    { slug: 'mouse',       nombre: 'Mouse',               tiene_codigo: true,  sigla: 'MS', es_sistema: true },
+    { slug: 'teclado',     nombre: 'Teclado',             tiene_codigo: true,  sigla: 'TC', es_sistema: true },
+    { slug: 'wifi',        nombre: 'Adaptador Wi-Fi',     tiene_codigo: true,  sigla: 'WF', es_sistema: true },
+    { slug: 'chip_sim',    nombre: 'Chip SIM / Línea',    tiene_codigo: false, sigla: '',   es_sistema: true },
+    { slug: 'general',     nombre: 'Dispositivo General', tiene_codigo: true,  sigla: 'EQ', es_sistema: true }
 ];
 
 const DEFAULT_PLANTILLAS = [
     {
-        id: 'pc_monitor',
+        slug: 'pc_monitor',
         nombre: 'PC + Monitor',
         orden: 1,
-        tipo_componente_id: 'computadora',
+        tipo_componente_slug: 'computadora',
         tipo_flujo: 'entrega',
         usar_como_remito: true,
         usar_como_adicional: false,
@@ -119,10 +119,10 @@ const DEFAULT_PLANTILLAS = [
         }
     },
     {
-        id: 'notebook',
+        slug: 'notebook',
         nombre: 'Notebook',
         orden: 2,
-        tipo_componente_id: 'notebook',
+        tipo_componente_slug: 'notebook',
         tipo_flujo: 'entrega',
         usar_como_remito: true,
         usar_como_adicional: true,
@@ -165,10 +165,10 @@ const DEFAULT_PLANTILLAS = [
         }
     },
     {
-        id: 'celular',
+        slug: 'celular',
         nombre: 'Celular',
         orden: 3,
-        tipo_componente_id: 'celular',
+        tipo_componente_slug: 'celular',
         tipo_flujo: 'entrega',
         usar_como_remito: true,
         usar_como_adicional: true,
@@ -224,10 +224,10 @@ const DEFAULT_PLANTILLAS = [
         }
     },
     {
-        id: 'auricular',
+        slug: 'auricular',
         nombre: 'Auricular H151',
         orden: 4,
-        tipo_componente_id: 'auricular',
+        tipo_componente_slug: 'auricular',
         tipo_flujo: 'entrega',
         usar_como_remito: true,
         usar_como_adicional: true,
@@ -265,10 +265,10 @@ const DEFAULT_PLANTILLAS = [
         }
     },
     {
-        id: 'mouse',
+        slug: 'mouse',
         nombre: 'Mouse',
         orden: 5,
-        tipo_componente_id: 'mouse',
+        tipo_componente_slug: 'mouse',
         tipo_flujo: 'entrega',
         usar_como_remito: true,
         usar_como_adicional: true,
@@ -306,10 +306,10 @@ const DEFAULT_PLANTILLAS = [
         }
     },
     {
-        id: 'teclado',
+        slug: 'teclado',
         nombre: 'Teclado / Kit',
         orden: 6,
-        tipo_componente_id: 'teclado',
+        tipo_componente_slug: 'teclado',
         tipo_flujo: 'entrega',
         usar_como_remito: true,
         usar_como_adicional: true,
@@ -347,10 +347,10 @@ const DEFAULT_PLANTILLAS = [
         }
     },
     {
-        id: 'wifi',
+        slug: 'wifi',
         nombre: 'Adaptador Wi-Fi',
         orden: 7,
-        tipo_componente_id: 'wifi',
+        tipo_componente_slug: 'wifi',
         tipo_flujo: 'entrega',
         usar_como_remito: true,
         usar_como_adicional: true,
@@ -388,10 +388,10 @@ const DEFAULT_PLANTILLAS = [
         }
     },
     {
-        id: 'monitor_solo',
+        slug: 'monitor_solo',
         nombre: 'Monitor Solo',
         orden: 8,
-        tipo_componente_id: 'monitor',
+        tipo_componente_slug: 'monitor',
         tipo_flujo: 'entrega',
         usar_como_remito: true,
         usar_como_adicional: true,
@@ -429,10 +429,10 @@ const DEFAULT_PLANTILLAS = [
         }
     },
     {
-        id: 'traslado',
+        slug: 'traslado',
         nombre: 'Traslado entre personas',
         orden: 9,
-        tipo_componente_id: 'general',
+        tipo_componente_slug: 'general',
         tipo_flujo: 'traslado',
         usar_como_remito: true,
         usar_como_adicional: false,
@@ -470,10 +470,10 @@ const DEFAULT_PLANTILLAS = [
         }
     },
     {
-        id: 'baja',
+        slug: 'baja',
         nombre: 'Baja / Devolución',
         orden: 10,
-        tipo_componente_id: 'general',
+        tipo_componente_slug: 'general',
         tipo_flujo: 'baja',
         usar_como_remito: true,
         usar_como_adicional: false,

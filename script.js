@@ -53,15 +53,15 @@ function poblarSelectTiposRemito(preservarSeleccion = true) {
     select.innerHTML = '';
     plantillas.forEach((p, idx) => {
         const opt = document.createElement('option');
-        opt.value = p.id;
+        opt.value = String(p.id);
         opt.innerText = `${idx + 1}. ${p.nombre}`;
         select.appendChild(opt);
     });
 
-    if (prev && plantillas.some(p => p.id === prev)) {
-        select.value = prev;
+    if (prev && plantillas.some(p => String(p.id) === String(prev))) {
+        select.value = String(prev);
     } else if (plantillas.length > 0) {
-        select.value = plantillas[0].id;
+        select.value = String(plantillas[0].id);
     }
 }
 
@@ -74,17 +74,17 @@ function poblarSelectSucursales(preservarSeleccion = true) {
     select.innerHTML = '';
     sucursales.forEach(suc => {
         const opt = document.createElement('option');
-        opt.value = suc.getId();
-        opt.innerText = `${suc.getNombreCompleto()} (Cód. ${suc.getId()})`;
+        opt.value = String(suc.getCodigo());
+        opt.innerText = `${suc.getNombreCompleto()} (Cód. ${suc.getCodigo()})`;
         select.appendChild(opt);
     });
 
-    if (prev !== '' && sucursales.some(s => String(s.getId()) === String(prev))) {
-        select.value = prev;
-    } else if (sucursales.some(s => s.getId() === 28)) {
+    if (prev !== '' && sucursales.some(s => String(s.getCodigo()) === String(prev))) {
+        select.value = String(prev);
+    } else if (sucursales.some(s => s.getCodigo() === 28)) {
         select.value = '28';
     } else if (sucursales.length > 0) {
-        select.value = String(sucursales[0].getId());
+        select.value = String(sucursales[0].getCodigo());
     }
 }
 
@@ -111,8 +111,8 @@ function onCatalogosActualizados() {
 
     // Depurar componentes adicionales cuyas plantillas fueron eliminadas o desmarcadas
     const disponibles = dataStore.obtenerPlantillasAdicional();
-    const idsValidos = new Set(disponibles.map(p => p.id));
-    componentesAdicionales = componentesAdicionales.filter(c => idsValidos.has(c.plantillaId));
+    const idsValidos = new Set(disponibles.map(p => Number(p.id)));
+    componentesAdicionales = componentesAdicionales.filter(c => idsValidos.has(Number(c.plantillaId)));
 
     // Re-renderizar el formulario con los catálogos/plantillas actualizados
     Object.keys(codigosEstado).forEach(k => {
@@ -135,9 +135,9 @@ function construirCodigo(sigla, sucursal, numero) {
     return `${s}-${suc}-${n}`;
 }
 
-function initEstadoCodigo(inputId, sigla, sucursalId = null, numero = null, syncGroup = null) {
+function initEstadoCodigo(inputId, sigla, sucursalCodigo = null, numero = null, syncGroup = null) {
     const num = numero || generarSufijo();
-    const suc = String(sucursalId !== null && sucursalId !== undefined ? sucursalId : obtenerSucursalActual().getId());
+    const suc = String(sucursalCodigo !== null && sucursalCodigo !== undefined ? sucursalCodigo : obtenerSucursalActual().getCodigo());
     codigosEstado[inputId] = {
         sigla: sigla || 'EQ',
         sucursal: suc,
@@ -222,7 +222,7 @@ function regenerarCodigo(inputId) {
     estado.numero = generarSufijo();
     if (estado.modo === 'auto') {
         estado.sigla = estado.siglaDefault;
-        estado.sucursal = String(obtenerSucursalActual().getId());
+        estado.sucursal = String(obtenerSucursalActual().getCodigo());
     }
 
     sincronizarGrupoCodigos(inputId);
@@ -237,7 +237,7 @@ function toggleModoCodigo(inputId) {
     estado.modo = estado.modo === 'auto' ? 'manual' : 'auto';
     if (estado.modo === 'auto') {
         estado.sigla = estado.siglaDefault;
-        estado.sucursal = String(obtenerSucursalActual().getId());
+        estado.sucursal = String(obtenerSucursalActual().getCodigo());
     }
 
     sincronizarDisplayCodigo(inputId);
@@ -265,7 +265,7 @@ function renderCampoCodigoHTML(campo, autoCode, estado, suc) {
             <div class="code-manual-segments">
                 <input type="text" class="code-seg-input code-seg-sigla" id="sigla_input_${cid}" value="${escapeHtml(estado.sigla)}" maxlength="6" placeholder="${escapeHtml(campo.sigla || 'EQ')}" title="Sigla del componente" oninput="onCodigoSegmentChange('${cid}')">
                 <span class="code-seg-sep">-</span>
-                <input type="text" class="code-seg-input code-seg-suc" id="suc_input_${cid}" value="${escapeHtml(estado.sucursal)}" maxlength="4" placeholder="${suc.getId()}" title="Código de sucursal" oninput="onCodigoSegmentChange('${cid}')">
+                <input type="text" class="code-seg-input code-seg-suc" id="suc_input_${cid}" value="${escapeHtml(estado.sucursal)}" maxlength="4" placeholder="${suc.getCodigo()}" title="Código de sucursal" oninput="onCodigoSegmentChange('${cid}')">
                 <span class="code-seg-sep">-</span>
                 <input type="text" class="code-seg-input code-seg-num" id="sufijo_input_${cid}" value="${escapeHtml(estado.numero)}" maxlength="8" placeholder="0000" title="Número" oninput="onCodigoSegmentChange('${cid}')">
             </div>
@@ -353,7 +353,7 @@ function agregarComponenteAdicional() {
     });
 
     if (tieneCodigo) {
-        initEstadoCodigo(inputId, sigla, suc.getId(), generarSufijo(), null);
+        initEstadoCodigo(inputId, sigla, suc.getCodigo(), generarSufijo(), null);
     }
 
     renderComponentesAdicionales();
@@ -389,7 +389,7 @@ function onTipoComponenteChange(uid) {
                 codigosEstado[inputId].sigla = sigla;
             }
         } else {
-            initEstadoCodigo(inputId, sigla, obtenerSucursalActual().getId(), generarSufijo(), null);
+            initEstadoCodigo(inputId, sigla, obtenerSucursalActual().getCodigo(), generarSufijo(), null);
         }
     } else {
         delete codigosEstado[inputId];
@@ -436,7 +436,7 @@ function renderComponentesAdicionales() {
         let codigoHtml = '';
         if (tieneCodigo) {
             if (!codigosEstado[inputId]) {
-                initEstadoCodigo(inputId, sigla, suc.getId(), generarSufijo(), null);
+                initEstadoCodigo(inputId, sigla, suc.getCodigo(), generarSufijo(), null);
             }
             const estado = codigosEstado[inputId];
             const codigoFull = construirCodigo(estado.sigla, estado.sucursal, estado.numero);
@@ -526,9 +526,9 @@ function renderForm() {
                 ? (numeroSincronizado || (numeroSincronizado = generarSufijo()))
                 : generarSufijo();
 
-            initEstadoCodigo(campo.id, campo.sigla, sucursal.getId(), num, syncGroup);
+            initEstadoCodigo(campo.id, campo.sigla, sucursal.getCodigo(), num, syncGroup);
             const estado = codigosEstado[campo.id];
-            const autoCode = construirCodigo(campo.sigla, sucursal.getId(), num);
+            const autoCode = construirCodigo(campo.sigla, sucursal.getCodigo(), num);
             group.innerHTML = renderCampoCodigoHTML(campo, autoCode, estado, sucursal);
 
         } else if (campo.tipoControl === 'area') {
@@ -569,12 +569,12 @@ function renderForm() {
 
 function onSucursalChange() {
     const sucursal = obtenerSucursalActual();
-    const sucursalId = String(sucursal.getId());
+    const sucursalCodigo = String(sucursal.getCodigo());
 
     Object.keys(codigosEstado).forEach(inputId => {
         const estado = codigosEstado[inputId];
         if (estado && estado.modo === 'auto') {
-            estado.sucursal = sucursalId;
+            estado.sucursal = sucursalCodigo;
             sincronizarDisplayCodigo(inputId);
         }
     });

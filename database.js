@@ -1,11 +1,14 @@
 /**
  * CAPA DE BASE DE DATOS Y PERSISTENCIA — MOTOZUNI S.A.
- * Implementa el patrón Repository (Principio DIP / OCP) con soporte para:
+ * Implementa el patrón Repository (Principio DIP / OCP) con claves primarias numéricas
+ * autoincrementales (BIGINT GENERATED ALWAYS AS IDENTITY) en todas las tablas.
+ *
  *  - Supabase (PostgreSQL vía REST API nativa con fetch, sin dependencias externas)
- *  - Respaldo local automático en localStorage para trabajo offline o previo a conectar Supabase
+ *  - Modo nube exclusivo cuando Supabase está configurado (sin copia local en localStorage)
+ *  - Repositorio local de respaldo únicamente si el usuario desconecta Supabase manualmente
  */
 
-// ── UTILIDADES DE SLUG Y CLONADO ─────────────────────────────────────────────
+// ── UTILIDADES ───────────────────────────────────────────────────────────────
 
 function generarSlug(texto, prefijo = 'item') {
     const base = String(texto || '')
@@ -19,6 +22,12 @@ function generarSlug(texto, prefijo = 'item') {
 
 function clonarProfundo(obj) {
     return JSON.parse(JSON.stringify(obj));
+}
+
+function siguienteIdNumerico(lista) {
+    if (!Array.isArray(lista) || lista.length === 0) return 1;
+    const max = lista.reduce((acc, item) => Math.max(acc, Number(item.id) || 0), 0);
+    return max + 1;
 }
 
 // ── CLIENTE REST LIVIANO PARA SUPABASE ───────────────────────────────────────
@@ -80,7 +89,24 @@ class SupabaseRestClient {
         return await this.#request(`${table}?${query}`, { method: 'GET' });
     }
 
-    async upsert(table, rows, onConflict = 'id') {
+    async insert(table, rows) {
+        const payload = Array.isArray(rows) ? rows : [rows];
+        return await this.#request(table, {
+            method: 'POST',
+            headers: { 'Prefer': 'return=representation' },
+            body: JSON.stringify(payload)
+        });
+    }
+
+    async updateById(table, id, patch) {
+        return await this.#request(`${table}?id=eq.${encodeURIComponent(id)}`, {
+            method: 'PATCH',
+            headers: { 'Prefer': 'return=representation' },
+            body: JSON.stringify(patch)
+        });
+    }
+
+    async upsert(table, rows, onConflict) {
         const payload = Array.isArray(rows) ? rows : [rows];
         return await this.#request(`${table}?on_conflict=${encodeURIComponent(onConflict)}`, {
             method: 'POST',
@@ -98,7 +124,6 @@ class SupabaseRestClient {
     }
 
     async testConnection() {
-        // Verifica acceso a las 4 tablas requeridas
         const tablas = ['sucursales', 'sectores', 'tipos_componente', 'plantillas'];
         for (const tabla of tablas) {
             await this.select(tabla, 'select=id&limit=1');
@@ -122,10 +147,11 @@ class IRepositorioDatos {
     async guardarTodo(snapshot) { throw new Error("Método abstracto 'guardarTodo'"); }
 }
 
-// ── REPOSITORIO LOCAL (localStorage) ─────────────────────────────────────────
+// ── REPOSITORIO LOCAL (SOLO SI SE DESCONECTA SUPABASE) ───────────────────────
 
 class RepositorioDatosLocal extends IRepositorioDatos {
-    static STORAGE_KEY = 'mz_remitos_db_v1';
+    static STORAGE_KEY = 'mz_remitos_db_v2';
+    static LEGACY_STORAGE_KEY = 'mz_remitos_db_v1';
 
     #leerRaw() {
         try {
@@ -143,17 +169,46 @@ class RepositorioDatosLocal extends IRepositorioDatos {
             localStorage.setItem(RepositorioDatosLocal.STORAGE_KEY, JSON.stringify(data));
         } catch (err) {
             console.error('No se pudo guardar en almacenamiento local:', err);
-            throw new Error('Error guardando datos localmente (espacio insuficiente o navegador bloqueado).');
+            throw new Error('Error guardando datos localmente.');
         }
     }
 
     crearSnapshotDefaults() {
-        return {
-            sucursales: clonarProfundo(DEFAULT_SUCURSALES),
-            sectores: clonarProfundo(DEFAULT_SECTORES),
-            tipos_componente: clonarProfundo(DEFAULT_TIPOS_COMPONENTE),
-            plantillas: clonarProfundo(DEFAULT_PLANTILLAS)
-        };
+        const sucursales = DEFAULT_SUCURSALES.map((s, i) => ({
+            id: i + 1,
+            codigo: Number(s.codigo),
+            nombre: s.nombre
+        }));
+        const sectores = DEFAULT_SECTORES.map((s, i) => ({
+            id: i + 1,
+            nombre: s.nombre,
+            orden: s.orden
+        }));
+        const tipos_componente = DEFAULT_TIPOS_COMPONENTE.map((t, i) => ({
+            id: i + 1,
+            slug: t.slug,
+            nombre: t.nombre,
+            tiene_codigo: Boolean(t.tiene_codigo),
+            sigla: t.sigla || '',
+            es_sistema: Boolean(t.es_sistema)
+        }));
+        const tipoIdPorSlug = Object.fromEntries(tipos_componente.map(t => [t.slug, t.id]));
+        const plantillas = DEFAULT_PLANTILLAS.map((p, i) => ({
+            id: i + 1,
+            slug: p.slug,
+            nombre: p.nombre,
+            orden: p.orden,
+            tipo_componente_id: p.tipo_componente_slug ? (tipoIdPorSlug[p.tipo_componente_slug] || null) : null,
+            tipo_flujo: p.tipo_flujo,
+            usar_como_remito: Boolean(p.usar_como_remito),
+            usar_como_adicional: Boolean(p.usar_como_adicional),
+            tiene_codigo: Boolean(p.tiene_codigo),
+            sigla_codigo: p.sigla_codigo || '',
+            es_sistema: Boolean(p.es_sistema),
+            config: clonarProfundo(p.config)
+        }));
+
+        return { sucursales, sectores, tipos_componente, plantillas };
     }
 
     async cargarTodo() {
@@ -166,17 +221,53 @@ class RepositorioDatosLocal extends IRepositorioDatos {
     }
 
     async guardarTodo(snapshot) {
-        this.#escribirRaw(snapshot);
-        return snapshot;
+        const actual = this.#leerRaw() || this.crearSnapshotDefaults();
+        const nuevo = {
+            sucursales: Array.isArray(snapshot.sucursales)
+                ? snapshot.sucursales.map((s, i) => ({ id: Number(s.id) || (i + 1), codigo: Number(s.codigo ?? s.id), nombre: s.nombre }))
+                : actual.sucursales,
+            sectores: Array.isArray(snapshot.sectores)
+                ? snapshot.sectores.map((s, i) => ({ id: Number(s.id) || (i + 1), nombre: s.nombre, orden: Number(s.orden ?? i + 1) }))
+                : actual.sectores,
+            tipos_componente: Array.isArray(snapshot.tipos_componente)
+                ? snapshot.tipos_componente.map((t, i) => ({
+                    id: Number(t.id) || (i + 1),
+                    slug: t.slug || generarSlug(t.nombre, 'comp'),
+                    nombre: t.nombre,
+                    tiene_codigo: Boolean(t.tiene_codigo),
+                    sigla: t.tiene_codigo ? String(t.sigla || '').trim().toUpperCase() : '',
+                    es_sistema: Boolean(t.es_sistema)
+                }))
+                : actual.tipos_componente,
+            plantillas: Array.isArray(snapshot.plantillas)
+                ? snapshot.plantillas.map((p, i) => ({
+                    ...clonarProfundo(p),
+                    id: Number(p.id) || (i + 1),
+                    slug: p.slug || generarSlug(p.nombre, 'plantilla')
+                }))
+                : actual.plantillas
+        };
+        this.#escribirRaw(nuevo);
+        return nuevo;
     }
 
     async guardarSucursal(suc) {
         const data = await this.cargarTodo();
-        const idx = data.sucursales.findIndex(s => Number(s.id) === Number(suc.id));
-        const record = { id: Number(suc.id), nombre: String(suc.nombre).trim() };
-        if (idx >= 0) data.sucursales[idx] = record;
-        else data.sucursales.push(record);
-        data.sucursales.sort((a, b) => Number(a.id) - Number(b.id));
+        const isEdit = suc.id !== null && suc.id !== undefined && suc.id !== '';
+        const duplicadoCodigo = data.sucursales.find(s => Number(s.codigo) === Number(suc.codigo) && (!isEdit || Number(s.id) !== Number(suc.id)));
+        if (duplicadoCodigo) throw new Error(`Ya existe una sucursal con el código ${suc.codigo}.`);
+
+        let record;
+        if (isEdit) {
+            const idx = data.sucursales.findIndex(s => Number(s.id) === Number(suc.id));
+            record = { id: Number(suc.id), codigo: Number(suc.codigo), nombre: String(suc.nombre).trim() };
+            if (idx >= 0) data.sucursales[idx] = record;
+            else data.sucursales.push(record);
+        } else {
+            record = { id: siguienteIdNumerico(data.sucursales), codigo: Number(suc.codigo), nombre: String(suc.nombre).trim() };
+            data.sucursales.push(record);
+        }
+        data.sucursales.sort((a, b) => Number(a.codigo) - Number(b.codigo));
         this.#escribirRaw(data);
         return record;
     }
@@ -189,10 +280,17 @@ class RepositorioDatosLocal extends IRepositorioDatos {
 
     async guardarSector(sec) {
         const data = await this.cargarTodo();
-        const idx = data.sectores.findIndex(s => s.id === sec.id);
-        const record = { id: sec.id, nombre: sec.nombre, orden: Number(sec.orden || 0) };
-        if (idx >= 0) data.sectores[idx] = record;
-        else data.sectores.push(record);
+        const isEdit = sec.id !== null && sec.id !== undefined && sec.id !== '';
+        let record;
+        if (isEdit) {
+            const idx = data.sectores.findIndex(s => Number(s.id) === Number(sec.id));
+            record = { id: Number(sec.id), nombre: sec.nombre, orden: Number(sec.orden || 0) };
+            if (idx >= 0) data.sectores[idx] = record;
+            else data.sectores.push(record);
+        } else {
+            record = { id: siguienteIdNumerico(data.sectores), nombre: sec.nombre, orden: Number(sec.orden || 0) };
+            data.sectores.push(record);
+        }
         data.sectores.sort((a, b) => (a.orden - b.orden) || a.nombre.localeCompare(b.nombre));
         this.#escribirRaw(data);
         return record;
@@ -200,38 +298,60 @@ class RepositorioDatosLocal extends IRepositorioDatos {
 
     async eliminarSector(id) {
         const data = await this.cargarTodo();
-        data.sectores = data.sectores.filter(s => s.id !== id);
+        data.sectores = data.sectores.filter(s => Number(s.id) !== Number(id));
         this.#escribirRaw(data);
     }
 
     async guardarTipoComponente(tipo) {
         const data = await this.cargarTodo();
-        const idx = data.tipos_componente.findIndex(t => t.id === tipo.id);
-        const record = {
-            id: tipo.id,
-            nombre: tipo.nombre,
-            tiene_codigo: Boolean(tipo.tiene_codigo),
-            sigla: tipo.tiene_codigo ? String(tipo.sigla || '').trim().toUpperCase() : '',
-            es_sistema: Boolean(tipo.es_sistema)
-        };
-        if (idx >= 0) data.tipos_componente[idx] = record;
-        else data.tipos_componente.push(record);
+        const isEdit = tipo.id !== null && tipo.id !== undefined && tipo.id !== '';
+        let record;
+        if (isEdit) {
+            const idx = data.tipos_componente.findIndex(t => Number(t.id) === Number(tipo.id));
+            record = {
+                id: Number(tipo.id),
+                slug: tipo.slug || generarSlug(tipo.nombre, 'comp'),
+                nombre: tipo.nombre,
+                tiene_codigo: Boolean(tipo.tiene_codigo),
+                sigla: tipo.tiene_codigo ? String(tipo.sigla || '').trim().toUpperCase() : '',
+                es_sistema: Boolean(tipo.es_sistema)
+            };
+            if (idx >= 0) data.tipos_componente[idx] = record;
+            else data.tipos_componente.push(record);
+        } else {
+            record = {
+                id: siguienteIdNumerico(data.tipos_componente),
+                slug: tipo.slug || generarSlug(tipo.nombre, 'comp'),
+                nombre: tipo.nombre,
+                tiene_codigo: Boolean(tipo.tiene_codigo),
+                sigla: tipo.tiene_codigo ? String(tipo.sigla || '').trim().toUpperCase() : '',
+                es_sistema: Boolean(tipo.es_sistema)
+            };
+            data.tipos_componente.push(record);
+        }
         this.#escribirRaw(data);
         return record;
     }
 
     async eliminarTipoComponente(id) {
         const data = await this.cargarTodo();
-        data.tipos_componente = data.tipos_componente.filter(t => t.id !== id);
+        data.tipos_componente = data.tipos_componente.filter(t => Number(t.id) !== Number(id));
         this.#escribirRaw(data);
     }
 
     async guardarPlantilla(plantilla) {
         const data = await this.cargarTodo();
         const plain = plantilla instanceof PlantillaRemito ? plantilla.toJSON() : clonarProfundo(plantilla);
-        const idx = data.plantillas.findIndex(p => p.id === plain.id);
-        if (idx >= 0) data.plantillas[idx] = plain;
-        else data.plantillas.push(plain);
+        const isEdit = plain.id !== null && plain.id !== undefined && plain.id !== '';
+        if (isEdit) {
+            plain.id = Number(plain.id);
+            const idx = data.plantillas.findIndex(p => Number(p.id) === plain.id);
+            if (idx >= 0) data.plantillas[idx] = plain;
+            else data.plantillas.push(plain);
+        } else {
+            plain.id = siguienteIdNumerico(data.plantillas);
+            data.plantillas.push(plain);
+        }
         data.plantillas.sort((a, b) => (Number(a.orden ?? 100) - Number(b.orden ?? 100)) || a.nombre.localeCompare(b.nombre));
         this.#escribirRaw(data);
         return plain;
@@ -239,12 +359,12 @@ class RepositorioDatosLocal extends IRepositorioDatos {
 
     async eliminarPlantilla(id) {
         const data = await this.cargarTodo();
-        data.plantillas = data.plantillas.filter(p => p.id !== id);
+        data.plantillas = data.plantillas.filter(p => Number(p.id) !== Number(id));
         this.#escribirRaw(data);
     }
 }
 
-// ── REPOSITORIO SUPABASE (PostgreSQL en la nube) ─────────────────────────────
+// ── REPOSITORIO SUPABASE (PostgreSQL con IDs IDENTITY autoincrementales) ─────
 
 class RepositorioDatosSupabase extends IRepositorioDatos {
     #client;
@@ -256,10 +376,10 @@ class RepositorioDatosSupabase extends IRepositorioDatos {
 
     async cargarTodo() {
         const [sucursales, sectores, tipos_componente, plantillas] = await Promise.all([
-            this.#client.select('sucursales', 'select=id,nombre,activa&order=id.asc'),
-            this.#client.select('sectores', 'select=id,nombre,orden&order=orden.asc,nombre.asc'),
-            this.#client.select('tipos_componente', 'select=id,nombre,tiene_codigo,sigla,es_sistema&order=nombre.asc'),
-            this.#client.select('plantillas', 'select=id,nombre,orden,tipo_componente_id,tipo_flujo,usar_como_remito,usar_como_adicional,tiene_codigo,sigla_codigo,config,es_sistema&order=orden.asc,nombre.asc')
+            this.#client.select('sucursales', 'select=id,codigo,nombre,activa&order=codigo.asc,id.asc'),
+            this.#client.select('sectores', 'select=id,nombre,orden&order=orden.asc,id.asc'),
+            this.#client.select('tipos_componente', 'select=id,slug,nombre,tiene_codigo,sigla,es_sistema&order=nombre.asc,id.asc'),
+            this.#client.select('plantillas', 'select=id,slug,nombre,orden,tipo_componente_id,tipo_flujo,usar_como_remito,usar_como_adicional,tiene_codigo,sigla_codigo,config,es_sistema&order=orden.asc,id.asc')
         ]);
 
         return {
@@ -271,49 +391,67 @@ class RepositorioDatosSupabase extends IRepositorioDatos {
     }
 
     async guardarSucursal(suc) {
-        const payload = { id: Number(suc.id), nombre: String(suc.nombre).trim(), activa: true, updated_at: new Date().toISOString() };
-        const res = await this.#client.upsert('sucursales', payload);
-        return Array.isArray(res) ? res[0] : payload;
+        const payload = {
+            codigo: Number(suc.codigo),
+            nombre: String(suc.nombre).trim(),
+            activa: true,
+            updated_at: new Date().toISOString()
+        };
+        const isEdit = suc.id !== null && suc.id !== undefined && suc.id !== '';
+        const res = isEdit
+            ? await this.#client.updateById('sucursales', Number(suc.id), payload)
+            : await this.#client.insert('sucursales', payload);
+        return Array.isArray(res) ? res[0] : res;
     }
 
     async eliminarSucursal(id) {
-        await this.#client.deleteById('sucursales', id);
+        await this.#client.deleteById('sucursales', Number(id));
     }
 
     async guardarSector(sec) {
-        const payload = { id: sec.id, nombre: sec.nombre, orden: Number(sec.orden || 0), updated_at: new Date().toISOString() };
-        const res = await this.#client.upsert('sectores', payload);
-        return Array.isArray(res) ? res[0] : payload;
+        const payload = {
+            nombre: sec.nombre,
+            orden: Number(sec.orden || 0),
+            updated_at: new Date().toISOString()
+        };
+        const isEdit = sec.id !== null && sec.id !== undefined && sec.id !== '';
+        const res = isEdit
+            ? await this.#client.updateById('sectores', Number(sec.id), payload)
+            : await this.#client.insert('sectores', payload);
+        return Array.isArray(res) ? res[0] : res;
     }
 
     async eliminarSector(id) {
-        await this.#client.deleteById('sectores', id);
+        await this.#client.deleteById('sectores', Number(id));
     }
 
     async guardarTipoComponente(tipo) {
         const payload = {
-            id: tipo.id,
+            slug: tipo.slug || generarSlug(tipo.nombre, 'comp'),
             nombre: tipo.nombre,
             tiene_codigo: Boolean(tipo.tiene_codigo),
             sigla: tipo.tiene_codigo ? String(tipo.sigla || '').trim().toUpperCase() : '',
             es_sistema: Boolean(tipo.es_sistema),
             updated_at: new Date().toISOString()
         };
-        const res = await this.#client.upsert('tipos_componente', payload);
-        return Array.isArray(res) ? res[0] : payload;
+        const isEdit = tipo.id !== null && tipo.id !== undefined && tipo.id !== '';
+        const res = isEdit
+            ? await this.#client.updateById('tipos_componente', Number(tipo.id), payload)
+            : await this.#client.insert('tipos_componente', payload);
+        return Array.isArray(res) ? res[0] : res;
     }
 
     async eliminarTipoComponente(id) {
-        await this.#client.deleteById('tipos_componente', id);
+        await this.#client.deleteById('tipos_componente', Number(id));
     }
 
     async guardarPlantilla(plantilla) {
         const plain = plantilla instanceof PlantillaRemito ? plantilla.toJSON() : clonarProfundo(plantilla);
         const payload = {
-            id: plain.id,
+            slug: plain.slug || generarSlug(plain.nombre, 'plantilla'),
             nombre: plain.nombre,
             orden: Number(plain.orden ?? 100),
-            tipo_componente_id: plain.tipo_componente_id || null,
+            tipo_componente_id: plain.tipo_componente_id ? Number(plain.tipo_componente_id) : null,
             tipo_flujo: plain.tipo_flujo || 'entrega',
             usar_como_remito: Boolean(plain.usar_como_remito),
             usar_como_adicional: Boolean(plain.usar_como_adicional),
@@ -323,57 +461,77 @@ class RepositorioDatosSupabase extends IRepositorioDatos {
             es_sistema: Boolean(plain.es_sistema),
             updated_at: new Date().toISOString()
         };
-        const res = await this.#client.upsert('plantillas', payload);
-        return Array.isArray(res) ? res[0] : payload;
+        const isEdit = plain.id !== null && plain.id !== undefined && plain.id !== '';
+        const res = isEdit
+            ? await this.#client.updateById('plantillas', Number(plain.id), payload)
+            : await this.#client.insert('plantillas', payload);
+        return Array.isArray(res) ? res[0] : res;
     }
 
     async eliminarPlantilla(id) {
-        await this.#client.deleteById('plantillas', id);
+        await this.#client.deleteById('plantillas', Number(id));
     }
 
     async guardarTodo(snapshot) {
         const now = new Date().toISOString();
+
         if (snapshot.sucursales?.length) {
             await this.#client.upsert('sucursales', snapshot.sucursales.map(s => ({
-                id: Number(s.id),
+                codigo: Number(s.codigo ?? s.id),
                 nombre: String(s.nombre).trim(),
                 activa: true,
                 updated_at: now
-            })));
+            })), 'codigo');
         }
+
         if (snapshot.sectores?.length) {
             await this.#client.upsert('sectores', snapshot.sectores.map((s, i) => ({
-                id: s.id,
                 nombre: s.nombre,
                 orden: Number(s.orden ?? i + 1),
                 updated_at: now
-            })));
+            })), 'nombre');
         }
+
         if (snapshot.tipos_componente?.length) {
             await this.#client.upsert('tipos_componente', snapshot.tipos_componente.map(t => ({
-                id: t.id,
+                slug: t.slug || generarSlug(t.nombre, 'comp'),
                 nombre: t.nombre,
                 tiene_codigo: Boolean(t.tiene_codigo),
                 sigla: t.tiene_codigo ? String(t.sigla || '').trim().toUpperCase() : '',
                 es_sistema: Boolean(t.es_sistema),
                 updated_at: now
-            })));
+            })), 'slug');
         }
+
         if (snapshot.plantillas?.length) {
-            await this.#client.upsert('plantillas', snapshot.plantillas.map((p, i) => ({
-                id: p.id,
-                nombre: p.nombre,
-                orden: Number(p.orden ?? i + 1),
-                tipo_componente_id: p.tipo_componente_id || null,
-                tipo_flujo: p.tipo_flujo || 'entrega',
-                usar_como_remito: Boolean(p.usar_como_remito),
-                usar_como_adicional: Boolean(p.usar_como_adicional),
-                tiene_codigo: Boolean(p.tiene_codigo),
-                sigla_codigo: p.tiene_codigo ? String(p.sigla_codigo || '').trim().toUpperCase() : '',
-                config: p.config || {},
-                es_sistema: Boolean(p.es_sistema),
-                updated_at: now
-            })));
+            // Resolver FK numérica tipo_componente_id consultando los IDs reales en Supabase
+            const tiposRemotos = await this.#client.select('tipos_componente', 'select=id,slug');
+            const idPorSlug = Object.fromEntries((tiposRemotos || []).map(t => [t.slug, Number(t.id)]));
+            const idsValidos = new Set((tiposRemotos || []).map(t => Number(t.id)));
+
+            await this.#client.upsert('plantillas', snapshot.plantillas.map((p, i) => {
+                let tcId = null;
+                if (p.tipo_componente_slug && idPorSlug[p.tipo_componente_slug]) {
+                    tcId = idPorSlug[p.tipo_componente_slug];
+                } else if (p.tipo_componente_id && idsValidos.has(Number(p.tipo_componente_id))) {
+                    tcId = Number(p.tipo_componente_id);
+                }
+
+                return {
+                    slug: p.slug || generarSlug(p.nombre, 'plantilla'),
+                    nombre: p.nombre,
+                    orden: Number(p.orden ?? i + 1),
+                    tipo_componente_id: tcId,
+                    tipo_flujo: p.tipo_flujo || 'entrega',
+                    usar_como_remito: Boolean(p.usar_como_remito),
+                    usar_como_adicional: Boolean(p.usar_como_adicional),
+                    tiene_codigo: Boolean(p.tiene_codigo),
+                    sigla_codigo: p.tiene_codigo ? String(p.sigla_codigo || '').trim().toUpperCase() : '',
+                    config: p.config || {},
+                    es_sistema: Boolean(p.es_sistema),
+                    updated_at: now
+                };
+            }), 'slug');
         }
     }
 }
@@ -390,7 +548,7 @@ class DataStoreService {
     #ultimoError;
     #listeners = [];
 
-    // Caché en memoria con objetos de dominio
+    // Caché en memoria (hidratada desde Supabase)
     #sucursales = [];
     #sectores = [];
     #tiposComponente = [];
@@ -470,15 +628,15 @@ class DataStoreService {
 
     #hidratarCache(snapshot) {
         this.#sucursales = (snapshot.sucursales || [])
-            .map(s => new Sucursal(s.id, s.nombre))
-            .sort((a, b) => a.getId() - b.getId());
+            .map(s => new Sucursal(s.id, s.nombre, s.codigo ?? s.id))
+            .sort((a, b) => a.getCodigo() - b.getCodigo());
 
         this.#sectores = (snapshot.sectores || [])
             .map((s, idx) => new Sector(s.id, s.nombre, s.orden ?? idx + 1))
             .sort((a, b) => (a.getOrden() - b.getOrden()) || a.getNombre().localeCompare(b.getNombre()));
 
         this.#tiposComponente = (snapshot.tipos_componente || [])
-            .map(t => new TipoComponente(t.id, t.nombre, t.tiene_codigo, t.sigla, t.es_sistema))
+            .map(t => new TipoComponente(t.id, t.nombre, t.tiene_codigo, t.sigla, t.es_sistema, t.slug))
             .sort((a, b) => a.getNombre().localeCompare(b.getNombre()));
 
         this.#plantillas = (snapshot.plantillas || [])
@@ -487,13 +645,17 @@ class DataStoreService {
     }
 
     exportarSnapshot() {
+        const tipoSlugPorId = Object.fromEntries(this.#tiposComponente.map(t => [t.id, t.slug]));
         return {
-            version: 1,
+            version: 2,
             exportado_en: new Date().toISOString(),
-            sucursales: this.#sucursales.map(s => ({ id: s.getId(), nombre: s.getNombre() })),
+            sucursales: this.#sucursales.map(s => s.toJSON()),
             sectores: this.#sectores.map(s => s.toJSON()),
             tipos_componente: this.#tiposComponente.map(t => t.toJSON()),
-            plantillas: this.#plantillas.map(p => p.toJSON())
+            plantillas: this.#plantillas.map(p => ({
+                ...p.toJSON(),
+                tipo_componente_slug: p.tipo_componente_id ? (tipoSlugPorId[p.tipo_componente_id] || null) : null
+            }))
         };
     }
 
@@ -504,21 +666,23 @@ class DataStoreService {
         if (this.#repoSupabase) {
             try {
                 let remote = await this.#repoSupabase.cargarTodo();
-                // Si la BD remota estuviera vacía por primera vez, sube la semilla inicial una única vez
                 const faltaSemilla = !remote.plantillas.length || !remote.sucursales.length || !remote.sectores.length || !remote.tipos_componente.length;
                 if (faltaSemilla) {
                     const defaults = this.#repoLocal.crearSnapshotDefaults();
                     const merged = {
-                        sucursales: remote.sucursales.length ? remote.sucursales : defaults.sucursales,
-                        sectores: remote.sectores.length ? remote.sectores : defaults.sectores,
-                        tipos_componente: remote.tipos_componente.length ? remote.tipos_componente : defaults.tipos_componente,
-                        plantillas: remote.plantillas.length ? remote.plantillas : defaults.plantillas
+                        sucursales: remote.sucursales.length ? [] : defaults.sucursales,
+                        sectores: remote.sectores.length ? [] : defaults.sectores,
+                        tipos_componente: remote.tipos_componente.length ? [] : defaults.tipos_componente,
+                        plantillas: remote.plantillas.length ? [] : DEFAULT_PLANTILLAS
                     };
                     await this.#repoSupabase.guardarTodo(merged);
                     remote = await this.#repoSupabase.cargarTodo();
                 }
-                // Modo nube exclusivo: no conservar copia local de datos ni plantillas en localStorage
-                try { localStorage.removeItem(RepositorioDatosLocal.STORAGE_KEY); } catch { /* ignore */ }
+                // Modo nube exclusivo: limpiar cualquier copia local en localStorage
+                try {
+                    localStorage.removeItem(RepositorioDatosLocal.STORAGE_KEY);
+                    localStorage.removeItem(RepositorioDatosLocal.LEGACY_STORAGE_KEY);
+                } catch { /* ignore */ }
                 this.#hidratarCache(remote);
                 this.#modo = 'supabase';
                 this.#notificar();
@@ -612,45 +776,64 @@ class DataStoreService {
     }
 
     async restaurarDefaults(soloPlantillas = false) {
-        const defaults = this.#repoLocal.crearSnapshotDefaults();
         const repo = this.#getRepoActivo();
         if (soloPlantillas) {
-            await repo.guardarTodo({ plantillas: defaults.plantillas });
+            await repo.guardarTodo({ plantillas: DEFAULT_PLANTILLAS });
         } else {
-            await repo.guardarTodo(defaults);
+            await repo.guardarTodo({
+                sucursales: DEFAULT_SUCURSALES,
+                sectores: DEFAULT_SECTORES,
+                tipos_componente: DEFAULT_TIPOS_COMPONENTE,
+                plantillas: DEFAULT_PLANTILLAS
+            });
         }
         await this.#recargarDesdeRepoActivo();
     }
 
-    // ── Consultas síncronas desde caché en memoria (cargada desde Supabase) ─
+    // ── Consultas síncronas desde caché en memoria ──────────────────────────
 
     obtenerSucursales() { return [...this.#sucursales]; }
+    buscarSucursalPorId(id) {
+        const num = Number(id);
+        return this.#sucursales.find(s => s.getId() === num) || null;
+    }
     buscarSucursalPorCodigo(codigo) {
         const cod = Number(codigo);
-        return this.#sucursales.find(s => s.getId() === cod) || null;
+        return this.#sucursales.find(s => s.getCodigo() === cod) || null;
     }
 
     obtenerSectores() { return [...this.#sectores]; }
-    buscarSectorPorId(id) { return this.#sectores.find(s => s.getId() === id) || null; }
+    buscarSectorPorId(id) {
+        const num = Number(id);
+        return this.#sectores.find(s => s.getId() === num) || null;
+    }
 
     obtenerTiposComponente() { return [...this.#tiposComponente]; }
-    buscarTipoComponentePorId(id) { return this.#tiposComponente.find(t => t.getId() === id) || null; }
+    buscarTipoComponentePorId(id) {
+        const num = Number(id);
+        return this.#tiposComponente.find(t => t.getId() === num) || null;
+    }
 
     obtenerPlantillas() { return [...this.#plantillas]; }
     obtenerPlantillasRemito() { return this.#plantillas.filter(p => p.usar_como_remito); }
     obtenerPlantillasAdicional() { return this.#plantillas.filter(p => p.usar_como_adicional); }
-    buscarPlantillaPorId(id) { return this.#plantillas.find(p => p.id === id) || null; }
+    buscarPlantillaPorId(id) {
+        const num = Number(id);
+        return this.#plantillas.find(p => Number(p.id) === num) || null;
+    }
 
-    // ── Operaciones CRUD (exclusivas en Supabase cuando está conectado) ─────
+    // ── Operaciones CRUD (IDs numéricos autoincrementales en BD) ────────────
 
-    async guardarSucursal(id, nombre) {
-        const numId = Number(id);
-        const cleanNombre = String(nombre || '').trim().toUpperCase();
-        if (Number.isNaN(numId) || numId < 0) throw new Error('El código de sucursal debe ser un número válido (0 o mayor).');
+    async guardarSucursal(sucursalData) {
+        const id = sucursalData.id !== undefined && sucursalData.id !== null && sucursalData.id !== ''
+            ? Number(sucursalData.id) : null;
+        const codigo = Number(sucursalData.codigo);
+        const cleanNombre = String(sucursalData.nombre || '').trim().toUpperCase();
+        if (Number.isNaN(codigo) || codigo < 0) throw new Error('El código de sucursal debe ser un número válido (0 o mayor).');
         if (!cleanNombre) throw new Error('El nombre de la sucursal es obligatorio.');
 
         const repo = this.#getRepoActivo();
-        await repo.guardarSucursal({ id: numId, nombre: cleanNombre });
+        await repo.guardarSucursal({ id, codigo, nombre: cleanNombre });
         await this.#recargarDesdeRepoActivo();
     }
 
@@ -659,14 +842,15 @@ class DataStoreService {
             throw new Error('Debe existir al menos una sucursal.');
         }
         const repo = this.#getRepoActivo();
-        await repo.eliminarSucursal(id);
+        await repo.eliminarSucursal(Number(id));
         await this.#recargarDesdeRepoActivo();
     }
 
     async guardarSector(sectorData) {
         const nombre = String(sectorData.nombre || '').trim();
         if (!nombre) throw new Error('El nombre del sector es obligatorio.');
-        const id = sectorData.id ? String(sectorData.id).trim() : generarSlug(nombre, 'sector');
+        const id = sectorData.id !== undefined && sectorData.id !== null && sectorData.id !== ''
+            ? Number(sectorData.id) : null;
         const orden = Number(sectorData.orden ?? (this.#sectores.length + 1));
 
         const repo = this.#getRepoActivo();
@@ -679,30 +863,42 @@ class DataStoreService {
             throw new Error('Debe existir al menos un sector.');
         }
         const repo = this.#getRepoActivo();
-        await repo.eliminarSector(id);
+        await repo.eliminarSector(Number(id));
         await this.#recargarDesdeRepoActivo();
     }
 
     async guardarTipoComponente(tipoData) {
         const nombre = String(tipoData.nombre || '').trim();
         if (!nombre) throw new Error('El nombre del tipo de componente es obligatorio.');
-        const id = tipoData.id ? String(tipoData.id).trim() : generarSlug(nombre, 'comp');
+        const id = tipoData.id !== undefined && tipoData.id !== null && tipoData.id !== ''
+            ? Number(tipoData.id) : null;
         const tieneCodigo = Boolean(tipoData.tiene_codigo);
         const sigla = tieneCodigo ? String(tipoData.sigla || '').trim().toUpperCase() : '';
         if (tieneCodigo && !sigla) {
             throw new Error('Si el tipo de componente lleva código, debés indicar una sigla (ej: PC, CH, IM).');
         }
 
-        const rec = { id, nombre, tiene_codigo: tieneCodigo, sigla, es_sistema: Boolean(tipoData.es_sistema) };
+        let slug = tipoData.slug ? String(tipoData.slug).trim() : generarSlug(nombre, 'comp');
+        if (!id && this.#tiposComponente.some(t => t.slug === slug)) {
+            slug = `${slug}_${Date.now().toString().slice(-4)}`;
+        }
+
         const repo = this.#getRepoActivo();
-        await repo.guardarTipoComponente(rec);
+        const guardado = await repo.guardarTipoComponente({
+            id,
+            slug,
+            nombre,
+            tiene_codigo: tieneCodigo,
+            sigla,
+            es_sistema: Boolean(tipoData.es_sistema)
+        });
         await this.#recargarDesdeRepoActivo();
-        return rec;
+        return guardado;
     }
 
     async eliminarTipoComponente(id) {
         const repo = this.#getRepoActivo();
-        await repo.eliminarTipoComponente(id);
+        await repo.eliminarTipoComponente(Number(id));
         await this.#recargarDesdeRepoActivo();
     }
 
@@ -710,14 +906,17 @@ class DataStoreService {
         const nombre = String(plantillaData.nombre || '').trim();
         if (!nombre) throw new Error('El nombre de la plantilla es obligatorio.');
 
-        let id = plantillaData.id ? String(plantillaData.id).trim() : generarSlug(nombre, 'plantilla');
-        if (!plantillaData.id && this.buscarPlantillaPorId(id)) {
-            id = `${id}_${Date.now().toString().slice(-4)}`;
+        const id = plantillaData.id !== undefined && plantillaData.id !== null && plantillaData.id !== ''
+            ? Number(plantillaData.id) : null;
+        let slug = plantillaData.slug ? String(plantillaData.slug).trim() : generarSlug(nombre, 'plantilla');
+        if (!id && this.#plantillas.some(p => p.slug === slug)) {
+            slug = `${slug}_${Date.now().toString().slice(-4)}`;
         }
 
         const plantilla = new PlantillaRemito({
             ...plantillaData,
             id,
+            slug,
             nombre,
             orden: plantillaData.orden ?? (this.#plantillas.length + 1)
         });
@@ -731,9 +930,9 @@ class DataStoreService {
         }
 
         const repo = this.#getRepoActivo();
-        await repo.guardarPlantilla(plantilla);
+        const guardada = await repo.guardarPlantilla(plantilla);
         await this.#recargarDesdeRepoActivo();
-        return plantilla;
+        return guardada;
     }
 
     async eliminarPlantilla(id) {
@@ -743,7 +942,7 @@ class DataStoreService {
             throw new Error('Debe quedar al menos una plantilla disponible como Remito Principal.');
         }
         const repo = this.#getRepoActivo();
-        await repo.eliminarPlantilla(id);
+        await repo.eliminarPlantilla(Number(id));
         await this.#recargarDesdeRepoActivo();
     }
 }
