@@ -13,43 +13,52 @@
     <!-- BARRA LATERAL: FORMULARIO -->
     <div class="sidebar">
         <div class="sidebar-header">
-            <h2>Motozuni S.A.</h2>
-            <p>Generador de Remitos de Equipamiento</p>
+            <div class="sidebar-header-top">
+                <div>
+                    <h2>Motozuni S.A.</h2>
+                    <p>Generador de Remitos de Equipamiento</p>
+                </div>
+                <button type="button" class="btn-header-admin" onclick="adminPanel.abrir('plantillas')" title="Gestionar plantillas, sucursales, sectores, componentes y base de datos">
+                    ⚙️ Gestionar
+                </button>
+            </div>
+            <div class="sidebar-db-row">
+                <button type="button" id="db-status-pill" class="header-db-pill" onclick="adminPanel.abrir('database')" title="Ver o configurar conexión a base de datos Supabase">
+                    ⏳ Cargando base de datos...
+                </button>
+            </div>
         </div>
 
         <div class="form-container">
             <div class="form-group">
-                <label for="tipo_remito">Tipo de Remito</label>
+                <div class="label-row">
+                    <label for="tipo_remito">Tipo de Remito</label>
+                    <span class="btn-gen-code" onclick="adminPanel.abrir('plantillas')" title="Crear o editar plantillas de remitos">✏️ Plantillas</span>
+                </div>
                 <select id="tipo_remito" onchange="onTipoRemitoChange()">
-                    <option value="pc_monitor">1. PC + Monitor</option>
-                    <option value="notebook">2. Notebook</option>
-                    <option value="celular">3. Celular</option>
-                    <option value="auricular">4. Auricular H151</option>
-                    <option value="mouse">5. Mouse</option>
-                    <option value="teclado">6. Teclado / Kit</option>
-                    <option value="wifi">7. Adaptador Wi-Fi</option>
-                    <option value="monitor_solo">8. Monitor Solo</option>
-                    <option value="traslado">9. Traslado entre personas</option>
-                    <option value="baja">10. Baja / Devolución</option>
+                    <!-- Se puebla dinámicamente desde la base de datos -->
                 </select>
             </div>
 
             <div class="form-group">
-                <label for="sucursal">Sucursal</label>
+                <div class="label-row">
+                    <label for="sucursal">Sucursal</label>
+                    <span class="btn-gen-code" onclick="adminPanel.abrir('sucursales')" title="Agregar o editar sucursales">✏️ Sucursales</span>
+                </div>
                 <select id="sucursal" onchange="onSucursalChange()">
-                    <!-- Se puebla dinámicamente -->
+                    <!-- Se puebla dinámicamente desde la base de datos -->
                 </select>
             </div>
 
             <div id="dynamic-fields">
-                <!-- Campos dinámicos según selección -->
+                <!-- Campos dinámicos según la plantilla seleccionada -->
             </div>
 
             <!-- Sección de Componentes Adicionales -->
             <div class="seccion-adicionales" id="seccion-adicionales-container">
                 <div class="seccion-adicionales-header">
                     <label class="seccion-title">Componentes Adicionales</label>
-                    <button type="button" class="btn-add-comp" onclick="agregarComponenteAdicional()" title="Agregar otro dispositivo o periférico al remito">
+                    <button type="button" class="btn-add-comp" onclick="agregarComponenteAdicional()" title="Agregar otro dispositivo o componente al remito">
                         + Agregar Componente
                     </button>
                 </div>
@@ -74,8 +83,39 @@
     </div>
 </div>
 
+<!-- MODAL DE GESTIÓN (PLANTILLAS, SUCURSALES, SECTORES, COMPONENTES, SUPABASE) -->
+<div class="admin-modal" id="admin-modal" role="dialog" aria-modal="true" aria-label="Panel de Gestión">
+    <div class="admin-modal-dialog">
+        <div class="admin-modal-header">
+            <div>
+                <h2>⚙️ Panel de Gestión — Motozuni S.A.</h2>
+                <p>Administrá plantillas de remitos, sucursales, sectores, tipos de componentes y conexión con Supabase</p>
+            </div>
+            <button type="button" class="admin-close-btn" onclick="adminPanel.cerrar()" title="Cerrar">✕</button>
+        </div>
+
+        <div class="admin-tabs">
+            <button type="button" class="admin-tab-btn active" data-tab="plantillas" onclick="adminPanel.cambiarTab('plantillas')">📑 Plantillas</button>
+            <button type="button" class="admin-tab-btn" data-tab="sucursales" onclick="adminPanel.cambiarTab('sucursales')">🏢 Sucursales</button>
+            <button type="button" class="admin-tab-btn" data-tab="sectores" onclick="adminPanel.cambiarTab('sectores')">👥 Sectores / Áreas</button>
+            <button type="button" class="admin-tab-btn" data-tab="componentes" onclick="adminPanel.cambiarTab('componentes')">🧩 Tipos de Componentes</button>
+            <button type="button" class="admin-tab-btn" data-tab="database" onclick="adminPanel.cambiarTab('database')">☁️ Base de Datos</button>
+        </div>
+
+        <div class="admin-modal-body" id="admin-modal-body">
+            <!-- Se renderiza dinámicamente desde admin.js -->
+        </div>
+    </div>
+</div>
+
+<div class="admin-toast" id="admin-toast"></div>
+
+<script src="config.js"></script>
+<script src="defaults.js"></script>
 <script src="models.js"></script>
+<script src="database.js"></script>
 <script src="services.js"></script>
+<script src="admin.js"></script>
 <script src="script.js"></script>
 </body>
 </html>

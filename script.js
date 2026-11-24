@@ -1,116 +1,153 @@
 /**
  * CONTROLADOR PRINCIPAL DE LA APLICACIÓN — MOTOZUNI S.A.
- * Coordina la UI, la captura de datos y delega la renderización a los servicios orientados a objetos.
+ * Coordina la UI, los catálogos dinámicos desde la base de datos (Supabase / Local)
+ * y delega la renderización A4 a los servicios orientados a objetos.
  */
 
 // ── Instanciación de dependencias ────────────────────────────────────────────
-const repositorioSucursales = new RepositorioSucursalMemoria();
+const dataStore = new DataStoreService();
+const repositorioSucursales = new RepositorioSucursalStore(dataStore);
 const renderService = new RemitoHtmlRenderService();
+const adminPanel = new AdminPanelController(dataStore, () => onCatalogosActualizados());
 
 const TODAY = new Date().toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
-// Estado de códigos automáticos/manuales { inputId: { sigla, sucursal, numero, siglaDefault, modo } }
+// Estado de códigos automáticos/manuales { inputId: { sigla, sucursal, numero, siglaDefault, modo, syncGroup } }
 const codigosEstado = {};
 
 // Lista de componentes adicionales agregados al remito
-// Cada item: { uid, tipo, sigla, campos: { marca, modelo, nota } }
+// Cada item: { uid, plantillaId, campos: { [campoId]: valor }, nota: '' }
 let componentesAdicionales = [];
 let uidCounter = 0;
 
-// Mapeo de tipo de componente adicional → sigla y etiqueta
-const TIPOS_COMPONENTE_ADICIONAL = [
-    { value: 'auricular',    label: 'Auricular',        sigla: 'AU' },
-    { value: 'mouse',        label: 'Mouse',            sigla: 'MS' },
-    { value: 'teclado',      label: 'Teclado',          sigla: 'TC' },
-    { value: 'wifi',         label: 'Adaptador Wi-Fi',  sigla: 'WF' },
-    { value: 'monitor_solo', label: 'Monitor',          sigla: 'MO' },
-];
+// ── Helpers de lectura ───────────────────────────────────────────────────────
 
-// ── Inicializar select de sucursales ──────────────────────────────────────────
-const selectSucursal = document.getElementById('sucursal');
-if (selectSucursal) {
-    selectSucursal.innerHTML = '';
-    repositorioSucursales.obtenerTodas().forEach(suc => {
-        const opt = document.createElement('option');
-        opt.value = suc.getId();
-        opt.innerText = `${suc.getNombreCompleto()} (Cód. ${suc.getId()})`;
-        if (suc.getId() === 28) opt.selected = true;
-        selectSucursal.appendChild(opt);
-    });
-}
-
-// ── Helper: obtener valor de input ────────────────────────────────────────────
-/**
- * @param {string} id
- * @returns {string}
- */
 function v(id) {
     const el = document.getElementById(id);
     if (!el) return '';
-    const val = el.value.trim();
-    if (val === '') {
-        if (id === 'nombre' || id === 'nombre1' || id === 'nombre2' || id === 'fecha') return '';
-        return '—';
-    }
-    return val;
+    return el.value.trim();
 }
 
-/**
- * Obtiene la sucursal actualmente seleccionada
- * @returns {Sucursal}
- */
 function obtenerSucursalActual() {
     const select = document.getElementById('sucursal');
-    if (!select) return new Sucursal(28, 'SARANDI');
-    return repositorioSucursales.buscarPorCodigo(Number(select.value)) || new Sucursal(28, 'SARANDI');
+    const todas = repositorioSucursales.obtenerTodas();
+    if (!select) return todas[0] || new Sucursal(28, 'SARANDI');
+    return repositorioSucursales.buscarPorCodigo(Number(select.value)) || todas[0] || new Sucursal(28, 'SARANDI');
+}
+
+function obtenerPlantillaActual() {
+    const select = document.getElementById('tipo_remito');
+    const plantillas = dataStore.obtenerPlantillasRemito();
+    if (!select) return plantillas[0] || null;
+    return dataStore.buscarPlantillaPorId(select.value) || plantillas[0] || null;
+}
+
+// ── Poblado dinámico de selectores desde la BD ───────────────────────────────
+
+function poblarSelectTiposRemito(preservarSeleccion = true) {
+    const select = document.getElementById('tipo_remito');
+    if (!select) return;
+    const prev = preservarSeleccion ? select.value : '';
+    const plantillas = dataStore.obtenerPlantillasRemito();
+
+    select.innerHTML = '';
+    plantillas.forEach((p, idx) => {
+        const opt = document.createElement('option');
+        opt.value = p.id;
+        opt.innerText = `${idx + 1}. ${p.nombre}`;
+        select.appendChild(opt);
+    });
+
+    if (prev && plantillas.some(p => p.id === prev)) {
+        select.value = prev;
+    } else if (plantillas.length > 0) {
+        select.value = plantillas[0].id;
+    }
+}
+
+function poblarSelectSucursales(preservarSeleccion = true) {
+    const select = document.getElementById('sucursal');
+    if (!select) return;
+    const prev = preservarSeleccion ? select.value : '';
+    const sucursales = repositorioSucursales.obtenerTodas();
+
+    select.innerHTML = '';
+    sucursales.forEach(suc => {
+        const opt = document.createElement('option');
+        opt.value = suc.getId();
+        opt.innerText = `${suc.getNombreCompleto()} (Cód. ${suc.getId()})`;
+        select.appendChild(opt);
+    });
+
+    if (prev !== '' && sucursales.some(s => String(s.getId()) === String(prev))) {
+        select.value = prev;
+    } else if (sucursales.some(s => s.getId() === 28)) {
+        select.value = '28';
+    } else if (sucursales.length > 0) {
+        select.value = String(sucursales[0].getId());
+    }
+}
+
+function actualizarIndicadorBD() {
+    const pill = document.getElementById('db-status-pill');
+    if (!pill) return;
+    const estado = dataStore.getEstadoConexion();
+    if (estado.modo === 'supabase') {
+        pill.className = 'header-db-pill pill-supa';
+        pill.textContent = '🟢 Supabase conectado';
+    } else if (estado.modo === 'error_fallback') {
+        pill.className = 'header-db-pill pill-err';
+        pill.textContent = '🔴 Sin conexión (modo local)';
+    } else {
+        pill.className = 'header-db-pill pill-local';
+        pill.textContent = '🟡 Base local · Conectar Supabase';
+    }
+}
+
+function onCatalogosActualizados() {
+    actualizarIndicadorBD();
+    poblarSelectTiposRemito(true);
+    poblarSelectSucursales(true);
+
+    // Depurar componentes adicionales cuyas plantillas fueron eliminadas o desmarcadas
+    const disponibles = dataStore.obtenerPlantillasAdicional();
+    const idsValidos = new Set(disponibles.map(p => p.id));
+    componentesAdicionales = componentesAdicionales.filter(c => idsValidos.has(c.plantillaId));
+
+    // Re-renderizar el formulario con los catálogos/plantillas actualizados
+    Object.keys(codigosEstado).forEach(k => {
+        if (!k.startsWith('extra_cod_')) delete codigosEstado[k];
+    });
+    renderForm();
+    renderComponentesAdicionales();
 }
 
 // ── Lógica de Códigos ([Sigla]-[Sucursal]-[Número]) ──────────────────────────
 
-/**
- * Genera un número aleatorio de 4 dígitos
- */
 function generarSufijo() {
     return String(Math.floor(Math.random() * 10000)).padStart(4, '0');
 }
 
-/**
- * Construye un código según la especificación: [SIGLA]-[SUCURSAL]-[NUMERO]
- */
 function construirCodigo(sigla, sucursal, numero) {
-    const s = (sigla !== undefined && sigla !== null && String(sigla).trim() !== '') ? String(sigla).trim().toUpperCase() : 'XX';
+    const s = (sigla !== undefined && sigla !== null && String(sigla).trim() !== '') ? String(sigla).trim().toUpperCase() : 'EQ';
     const suc = (sucursal !== undefined && sucursal !== null && String(sucursal).trim() !== '') ? String(sucursal).trim() : '0';
     const n = (numero !== undefined && numero !== null && String(numero).trim() !== '') ? String(numero).trim() : '0000';
     return `${s}-${suc}-${n}`;
 }
 
-/**
- * Inicializa el estado de un campo de código
- */
-function initEstadoCodigo(inputId, sigla, sucursalId = null, numero = null) {
+function initEstadoCodigo(inputId, sigla, sucursalId = null, numero = null, syncGroup = null) {
     const num = numero || generarSufijo();
     const suc = String(sucursalId !== null && sucursalId !== undefined ? sucursalId : obtenerSucursalActual().getId());
     codigosEstado[inputId] = {
-        sigla: sigla,
+        sigla: sigla || 'EQ',
         sucursal: suc,
         numero: num,
-        siglaDefault: sigla,
-        modo: 'auto' // 'auto' | 'manual'
+        siglaDefault: sigla || 'EQ',
+        modo: 'auto',
+        syncGroup
     };
 }
 
-/**
- * Devuelve el valor final del código para un inputId
- */
-function getValorCodigo(inputId) {
-    const estado = codigosEstado[inputId];
-    if (!estado) return '—';
-    return construirCodigo(estado.sigla, estado.sucursal, estado.numero);
-}
-
-/**
- * Sincroniza el DOM del campo código con su estado actual
- */
 function sincronizarDisplayCodigo(inputId) {
     const estado = codigosEstado[inputId];
     if (!estado) return;
@@ -129,15 +166,9 @@ function sincronizarDisplayCodigo(inputId) {
     if (badge) badge.innerText = codigoFinal;
     if (inputOculto) inputOculto.value = codigoFinal;
 
-    if (siglaInput && document.activeElement !== siglaInput) {
-        siglaInput.value = estado.sigla;
-    }
-    if (sucInput && document.activeElement !== sucInput) {
-        sucInput.value = estado.sucursal;
-    }
-    if (numInput && document.activeElement !== numInput) {
-        numInput.value = estado.numero;
-    }
+    if (siglaInput && document.activeElement !== siglaInput) siglaInput.value = estado.sigla;
+    if (sucInput && document.activeElement !== sucInput) sucInput.value = estado.sucursal;
+    if (numInput && document.activeElement !== numInput) numInput.value = estado.numero;
 
     if (manualContainer && btnToggle) {
         if (estado.modo === 'manual') {
@@ -152,13 +183,22 @@ function sincronizarDisplayCodigo(inputId) {
     }
 }
 
-/**
- * Escucha cambios en cualquiera de los tres segmentos del código manual:
- * 1. Sigla (ej: PC)
- * 2. Sucursal (ej: 28)
- * 3. Número (ej: 2381)
- */
-function onCodigoSegmentChange(inputId, segment) {
+function sincronizarGrupoCodigos(origenId) {
+    const origen = codigosEstado[origenId];
+    if (!origen || !origen.syncGroup) return;
+
+    Object.keys(codigosEstado).forEach(otherId => {
+        if (otherId === origenId) return;
+        const otro = codigosEstado[otherId];
+        if (otro && otro.syncGroup === origen.syncGroup) {
+            otro.sucursal = origen.sucursal;
+            otro.numero = origen.numero;
+            sincronizarDisplayCodigo(otherId);
+        }
+    });
+}
+
+function onCodigoSegmentChange(inputId) {
     const estado = codigosEstado[inputId];
     if (!estado) return;
 
@@ -170,64 +210,32 @@ function onCodigoSegmentChange(inputId, segment) {
     if (sucInput) estado.sucursal = sucInput.value.trim();
     if (numInput) estado.numero = numInput.value.trim();
 
-    // Sincronización especial PC + Monitor:
-    // Si se modifica la sucursal o el número de la PC, sincronizarlo al Monitor
-    if (inputId === 'cod_pc') {
-        const estadoMo = codigosEstado['cod_mo'];
-        if (estadoMo) {
-            estadoMo.sucursal = estado.sucursal;
-            estadoMo.numero = estado.numero;
-            sincronizarDisplayCodigo('cod_mo');
-        }
-    }
-
+    sincronizarGrupoCodigos(inputId);
     sincronizarDisplayCodigo(inputId);
     updatePreview();
 }
 
-/**
- * Regenera el número aleatorio (botón "🎲 Nuevo")
- */
 function regenerarCodigo(inputId) {
     const estado = codigosEstado[inputId];
     if (!estado) return;
 
-    const nuevoNum = generarSufijo();
-    estado.numero = nuevoNum;
-
-    // Si está en auto, asegurar que sigla y sucursal correspondan a los defaults
+    estado.numero = generarSufijo();
     if (estado.modo === 'auto') {
         estado.sigla = estado.siglaDefault;
         estado.sucursal = String(obtenerSucursalActual().getId());
     }
 
-    // Sincronizar PC + Monitor
-    if (inputId === 'cod_pc') {
-        const estadoMo = codigosEstado['cod_mo'];
-        if (estadoMo) {
-            estadoMo.numero = nuevoNum;
-            if (estadoMo.modo === 'auto') {
-                estadoMo.sucursal = estado.sucursal;
-            }
-            sincronizarDisplayCodigo('cod_mo');
-        }
-    }
-
+    sincronizarGrupoCodigos(inputId);
     sincronizarDisplayCodigo(inputId);
     updatePreview();
 }
 
-/**
- * Alterna entre modo automático y modo manual (permite editar sigla, sucursal y número)
- */
 function toggleModoCodigo(inputId) {
     const estado = codigosEstado[inputId];
     if (!estado) return;
 
     estado.modo = estado.modo === 'auto' ? 'manual' : 'auto';
-
     if (estado.modo === 'auto') {
-        // Al regresar a modo automático, restablecer sigla y sucursal según la sucursal seleccionada
         estado.sigla = estado.siglaDefault;
         estado.sucursal = String(obtenerSucursalActual().getId());
     }
@@ -236,39 +244,37 @@ function toggleModoCodigo(inputId) {
     updatePreview();
 }
 
-/**
- * Renderiza el bloque HTML del campo de código con soporte de edición segmentada completa
- */
 function renderCampoCodigoHTML(campo, autoCode, estado, suc) {
     const isManual = estado && estado.modo === 'manual';
+    const cid = escapeHtml(campo.id);
 
     return `
         <div class="label-row">
-            <label>${campo.label}</label>
+            <label>${escapeHtml(campo.label)}</label>
         </div>
         <div class="code-box">
-            <span class="code-badge" id="display_${campo.id}">${autoCode}</span>
+            <span class="code-badge" id="display_${cid}">${escapeHtml(autoCode)}</span>
             <div class="code-actions">
-                <button type="button" class="btn-code-action" onclick="regenerarCodigo('${campo.id}')" title="Generar otro número aleatorio">🎲 Nuevo</button>
-                <button type="button" class="btn-code-action ${isManual ? 'active' : ''}" id="btn_toggle_${campo.id}" onclick="toggleModoCodigo('${campo.id}')" title="Modificar sigla, sucursal o número a mano">
+                <button type="button" class="btn-code-action" onclick="regenerarCodigo('${cid}')" title="Generar otro número aleatorio">🎲 Nuevo</button>
+                <button type="button" class="btn-code-action ${isManual ? 'active' : ''}" id="btn_toggle_${cid}" onclick="toggleModoCodigo('${cid}')" title="Modificar sigla, sucursal o número a mano">
                     ${isManual ? '⚙️ Automático' : '✏️ Anotar a mano'}
                 </button>
             </div>
         </div>
-        <div class="code-manual-container" id="manual_container_${campo.id}" style="display: ${isManual ? 'block' : 'none'};">
+        <div class="code-manual-container" id="manual_container_${cid}" style="display: ${isManual ? 'block' : 'none'};">
             <div class="code-manual-segments">
-                <input type="text" class="code-seg-input code-seg-sigla" id="sigla_input_${campo.id}" value="${estado.sigla}" maxlength="4" placeholder="${campo.sigla}" title="Sigla del componente (ej: ${campo.sigla})" oninput="onCodigoSegmentChange('${campo.id}', 'sigla')">
+                <input type="text" class="code-seg-input code-seg-sigla" id="sigla_input_${cid}" value="${escapeHtml(estado.sigla)}" maxlength="6" placeholder="${escapeHtml(campo.sigla || 'EQ')}" title="Sigla del componente" oninput="onCodigoSegmentChange('${cid}')">
                 <span class="code-seg-sep">-</span>
-                <input type="text" class="code-seg-input code-seg-suc" id="suc_input_${campo.id}" value="${estado.sucursal}" maxlength="4" placeholder="${suc.getId()}" title="Código de sucursal (ej: ${suc.getId()})" oninput="onCodigoSegmentChange('${campo.id}', 'sucursal')">
+                <input type="text" class="code-seg-input code-seg-suc" id="suc_input_${cid}" value="${escapeHtml(estado.sucursal)}" maxlength="4" placeholder="${suc.getId()}" title="Código de sucursal" oninput="onCodigoSegmentChange('${cid}')">
                 <span class="code-seg-sep">-</span>
-                <input type="text" class="code-seg-input code-seg-num" id="sufijo_input_${campo.id}" value="${estado.numero}" maxlength="8" placeholder="0000" title="Número de serie o aleatorio" oninput="onCodigoSegmentChange('${campo.id}', 'numero')">
+                <input type="text" class="code-seg-input code-seg-num" id="sufijo_input_${cid}" value="${escapeHtml(estado.numero)}" maxlength="8" placeholder="0000" title="Número" oninput="onCodigoSegmentChange('${cid}')">
             </div>
         </div>
-        <input type="hidden" id="${campo.id}" value="${autoCode}">
+        <input type="hidden" id="${cid}" value="${escapeHtml(autoCode)}">
     `;
 }
 
-// ── Lógica de Área ────────────────────────────────────────────────────────────
+// ── Lógica de Área / Sector (dinámico desde la BD) ───────────────────────────
 
 function onAreaSelectChange(campoId) {
     const select = document.getElementById(`select_${campoId}`);
@@ -296,45 +302,59 @@ function onAreaCustomInput(campoId) {
 }
 
 function renderCampoAreaHTML(campo) {
+    const sectores = dataStore.obtenerSectores();
+    const defaultSector = sectores.find(s => s.getNombre().toLowerCase() === 'logística') || sectores[0];
+    const defaultVal = defaultSector ? defaultSector.getNombre() : '';
+    const cid = escapeHtml(campo.id);
+
+    const opts = sectores.map(s => {
+        const nom = s.getNombre();
+        return `<option value="${escapeHtml(nom)}" ${nom === defaultVal ? 'selected' : ''}>${escapeHtml(nom)}</option>`;
+    }).join('');
+
     return `
-        <label for="select_${campo.id}">${campo.label}</label>
-        <select id="select_${campo.id}" onchange="onAreaSelectChange('${campo.id}')">
-            <option value="Administración">Administración</option>
-            <option value="Comercial">Comercial</option>
-            <option value="Gerencia - Administración">Gerencia - Administración</option>
-            <option value="Gerencia - Comercial">Gerencia - Comercial</option>
-            <option value="Gerencia - Operaciones">Gerencia - Operaciones</option>
-            <option value="Gestoría">Gestoría</option>
-            <option value="Logística" selected>Logística</option>
-            <option value="Operaciones">Operaciones</option>
-            <option value="Procesos">Procesos</option>
-            <option value="Recursos Humanos">Recursos Humanos</option>
+        <div class="label-row">
+            <label for="select_${cid}">${escapeHtml(campo.label)}</label>
+            <span class="btn-gen-code" onclick="adminPanel.abrir('sectores')" title="Agregar o editar sectores">✏️ Sectores</span>
+        </div>
+        <select id="select_${cid}" onchange="onAreaSelectChange('${cid}')">
+            ${opts}
             <option value="__OTRA__">Otra (escribir a mano)...</option>
         </select>
-        <div id="custom_container_${campo.id}" style="display: none; margin-top: 6px;">
-            <input type="text" id="custom_input_${campo.id}" placeholder="Ejemplo: Recursos Humanos" oninput="onAreaCustomInput('${campo.id}')">
+        <div id="custom_container_${cid}" style="display: none; margin-top: 6px;">
+            <input type="text" id="custom_input_${cid}" placeholder="Escribir sector a mano..." oninput="onAreaCustomInput('${cid}')">
         </div>
-        <input type="hidden" id="${campo.id}" value="Logística">
+        <input type="hidden" id="${cid}" value="${escapeHtml(defaultVal)}">
     `;
 }
 
-// ── Componentes Adicionales ───────────────────────────────────────────────────
+// ── Componentes Adicionales Dinámicos ────────────────────────────────────────
 
 function agregarComponenteAdicional() {
+    const disponibles = dataStore.obtenerPlantillasAdicional();
+    if (!disponibles.length) {
+        alert('No hay plantillas marcadas como "Componente Adicional". Podés habilitar alguna desde ⚙️ Gestionar → Plantillas.');
+        return;
+    }
+
     const suc = obtenerSucursalActual();
-    const tipo = TIPOS_COMPONENTE_ADICIONAL[0];
+    const plantilla = disponibles[0];
     const uid = ++uidCounter;
-    const num = generarSufijo();
     const inputId = `extra_cod_${uid}`;
+    const sec = plantilla.getSeccionPrincipal();
+    const tieneCodigo = Boolean(plantilla.tiene_codigo || (sec && sec.tieneCodigo));
+    const sigla = (sec && sec.sigla) || plantilla.sigla_codigo || 'EQ';
 
     componentesAdicionales.push({
         uid,
-        tipo: tipo.value,
-        sigla: tipo.sigla,
-        campos: { marca: '', modelo: '', nota: '' }
+        plantillaId: plantilla.id,
+        campos: {},
+        nota: ''
     });
 
-    initEstadoCodigo(inputId, tipo.sigla, suc.getId(), num);
+    if (tieneCodigo) {
+        initEstadoCodigo(inputId, sigla, suc.getId(), generarSufijo(), null);
+    }
 
     renderComponentesAdicionales();
     updatePreview();
@@ -350,60 +370,106 @@ function eliminarComponenteAdicional(uid) {
 function onTipoComponenteChange(uid) {
     const select = document.getElementById(`extra_tipo_${uid}`);
     if (!select) return;
-    const nuevoTipo = select.value;
-    const def = TIPOS_COMPONENTE_ADICIONAL.find(t => t.value === nuevoTipo);
+    const nuevaPlantilla = dataStore.buscarPlantillaPorId(select.value);
     const comp = componentesAdicionales.find(c => c.uid === uid);
-    if (!comp || !def) return;
+    if (!comp || !nuevaPlantilla) return;
 
-    comp.tipo = nuevoTipo;
-    comp.sigla = def.sigla;
+    comp.plantillaId = nuevaPlantilla.id;
+    comp.campos = {};
 
     const inputId = `extra_cod_${uid}`;
-    const estado = codigosEstado[inputId];
-    if (estado) {
-        estado.siglaDefault = def.sigla;
-        if (estado.modo === 'auto') {
-            estado.sigla = def.sigla;
+    const sec = nuevaPlantilla.getSeccionPrincipal();
+    const tieneCodigo = Boolean(nuevaPlantilla.tiene_codigo || (sec && sec.tieneCodigo));
+    const sigla = (sec && sec.sigla) || nuevaPlantilla.sigla_codigo || 'EQ';
+
+    if (tieneCodigo) {
+        if (codigosEstado[inputId]) {
+            codigosEstado[inputId].siglaDefault = sigla;
+            if (codigosEstado[inputId].modo === 'auto') {
+                codigosEstado[inputId].sigla = sigla;
+            }
+        } else {
+            initEstadoCodigo(inputId, sigla, obtenerSucursalActual().getId(), generarSufijo(), null);
         }
-        sincronizarDisplayCodigo(inputId);
+    } else {
+        delete codigosEstado[inputId];
     }
+
+    renderComponentesAdicionales();
     updatePreview();
 }
 
-function onCampoExtraInput(uid, campo) {
+function onCampoExtraInput(uid, campoId) {
     const comp = componentesAdicionales.find(c => c.uid === uid);
     if (!comp) return;
-    const el = document.getElementById(`extra_${campo}_${uid}`);
-    if (el) comp.campos[campo] = el.value.trim();
+    const el = document.getElementById(`extra_f_${uid}_${campoId}`);
+    if (el) comp.campos[campoId] = el.value.trim();
     updatePreview();
 }
 
-/**
- * Renderiza la sección de componentes adicionales en el sidebar
- */
+function onNotaExtraInput(uid) {
+    const comp = componentesAdicionales.find(c => c.uid === uid);
+    if (!comp) return;
+    const el = document.getElementById(`extra_nota_${uid}`);
+    if (el) comp.nota = el.value.trim();
+    updatePreview();
+}
+
 function renderComponentesAdicionales() {
     const container = document.getElementById('componentes-adicionales-lista');
     if (!container) return;
     const suc = obtenerSucursalActual();
+    const disponibles = dataStore.obtenerPlantillasAdicional();
 
     container.innerHTML = '';
 
     componentesAdicionales.forEach(comp => {
         const uid = comp.uid;
-        const inputId = `extra_cod_${uid}`;
-        const estado = codigosEstado[inputId] || {
-            sigla: comp.sigla,
-            sucursal: String(suc.getId()),
-            numero: generarSufijo(),
-            siglaDefault: comp.sigla,
-            modo: 'auto'
-        };
-        const codigoFull = construirCodigo(estado.sigla, estado.sucursal, estado.numero);
-        const isManual = estado.modo === 'manual';
+        const plantilla = dataStore.buscarPlantillaPorId(comp.plantillaId) || disponibles[0];
+        if (!plantilla) return;
 
-        const tiposOpts = TIPOS_COMPONENTE_ADICIONAL.map(t =>
-            `<option value="${t.value}" ${t.value === comp.tipo ? 'selected' : ''}>${t.label}</option>`
+        const sec = plantilla.getSeccionPrincipal();
+        const tieneCodigo = Boolean(plantilla.tiene_codigo || (sec && sec.tieneCodigo));
+        const sigla = (sec && sec.sigla) || plantilla.sigla_codigo || 'EQ';
+        const inputId = `extra_cod_${uid}`;
+
+        let codigoHtml = '';
+        if (tieneCodigo) {
+            if (!codigosEstado[inputId]) {
+                initEstadoCodigo(inputId, sigla, suc.getId(), generarSufijo(), null);
+            }
+            const estado = codigosEstado[inputId];
+            const codigoFull = construirCodigo(estado.sigla, estado.sucursal, estado.numero);
+            codigoHtml = `<div class="form-group">${renderCampoCodigoHTML({ id: inputId, label: (sec && sec.codigoLabel) || 'Código', sigla }, codigoFull, estado, suc)}</div>`;
+        }
+
+        const tiposOpts = disponibles.map(p =>
+            `<option value="${escapeHtml(p.id)}" ${p.id === plantilla.id ? 'selected' : ''}>${escapeHtml(p.nombre)}</option>`
         ).join('');
+
+        // Campos dinámicos propios de la plantilla del componente adicional
+        const camposSec = (sec && Array.isArray(sec.campos)) ? sec.campos.filter(c => c.tipoControl !== 'fijo') : [];
+        const camposHtml = camposSec.map(c => {
+            const valActual = comp.campos[c.id] ?? c.valorDefecto ?? '';
+            const fid = `extra_f_${uid}_${escapeHtml(c.id)}`;
+            if (c.tipoControl === 'select' && Array.isArray(c.opciones) && c.opciones.length) {
+                const opts = ['<option value="">-- Seleccionar --</option>', ...c.opciones.map(o =>
+                    `<option value="${escapeHtml(o)}" ${o === valActual ? 'selected' : ''}>${escapeHtml(o)}</option>`
+                )].join('');
+                return `
+                    <div class="form-group">
+                        <label for="${fid}">${escapeHtml(c.labelForm || c.label)}</label>
+                        <select id="${fid}" onchange="onCampoExtraInput(${uid}, '${escapeHtml(c.id)}')">${opts}</select>
+                    </div>
+                `;
+            }
+            return `
+                <div class="form-group">
+                    <label for="${fid}">${escapeHtml(c.labelForm || c.label)}</label>
+                    <input type="text" id="${fid}" value="${escapeHtml(valActual)}" placeholder="${escapeHtml(c.placeholder || '')}" oninput="onCampoExtraInput(${uid}, '${escapeHtml(c.id)}')">
+                </div>
+            `;
+        }).join('');
 
         const card = document.createElement('div');
         card.className = 'comp-adicional-card';
@@ -413,39 +479,11 @@ function renderComponentesAdicionales() {
                 <select id="extra_tipo_${uid}" onchange="onTipoComponenteChange(${uid})">${tiposOpts}</select>
                 <button type="button" class="btn-eliminar-comp" onclick="eliminarComponenteAdicional(${uid})" title="Quitar este componente">✕</button>
             </div>
+            ${codigoHtml}
+            ${camposHtml}
             <div class="form-group">
-                <label>Código</label>
-                <div class="code-box">
-                    <span class="code-badge" id="display_${inputId}">${codigoFull}</span>
-                    <div class="code-actions">
-                        <button type="button" class="btn-code-action" onclick="regenerarCodigo('${inputId}')" title="Generar otro número">🎲 Nuevo</button>
-                        <button type="button" class="btn-code-action ${isManual ? 'active' : ''}" id="btn_toggle_${inputId}" onclick="toggleModoCodigo('${inputId}')" title="Modificar sigla, sucursal o número a mano">
-                            ${isManual ? '⚙️ Automático' : '✏️ Anotar a mano'}
-                        </button>
-                    </div>
-                </div>
-                <div class="code-manual-container" id="manual_container_${inputId}" style="display: ${isManual ? 'block' : 'none'};">
-                    <div class="code-manual-segments">
-                        <input type="text" class="code-seg-input code-seg-sigla" id="sigla_input_${inputId}" value="${estado.sigla}" maxlength="4" placeholder="${comp.sigla}" title="Sigla" oninput="onCodigoSegmentChange('${inputId}', 'sigla')">
-                        <span class="code-seg-sep">-</span>
-                        <input type="text" class="code-seg-input code-seg-suc" id="suc_input_${inputId}" value="${estado.sucursal}" maxlength="4" placeholder="${suc.getId()}" title="Código de sucursal" oninput="onCodigoSegmentChange('${inputId}', 'sucursal')">
-                        <span class="code-seg-sep">-</span>
-                        <input type="text" class="code-seg-input code-seg-num" id="sufijo_input_${inputId}" value="${estado.numero}" maxlength="8" placeholder="0000" title="Número" oninput="onCodigoSegmentChange('${inputId}', 'numero')">
-                    </div>
-                </div>
-                <input type="hidden" id="${inputId}" value="${codigoFull}">
-            </div>
-            <div class="form-group">
-                <label>Marca</label>
-                <input type="text" id="extra_marca_${uid}" value="${comp.campos.marca}" placeholder="Ejemplo: Logitech" oninput="onCampoExtraInput(${uid}, 'marca')">
-            </div>
-            <div class="form-group">
-                <label>Modelo</label>
-                <input type="text" id="extra_modelo_${uid}" value="${comp.campos.modelo}" placeholder="Ejemplo: H151" oninput="onCampoExtraInput(${uid}, 'modelo')">
-            </div>
-            <div class="form-group">
-                <label>Nota Adicional</label>
-                <input type="text" id="extra_nota_${uid}" value="${comp.campos.nota}" placeholder="Ejemplo: Conexión Jack 3.5mm" oninput="onCampoExtraInput(${uid}, 'nota')">
+                <label for="extra_nota_${uid}">Nota Adicional</label>
+                <input type="text" id="extra_nota_${uid}" value="${escapeHtml(comp.nota || '')}" placeholder="${escapeHtml(plantilla.config.notaPlaceholder || 'Observación opcional...')}" oninput="onNotaExtraInput(${uid})">
             </div>
         `;
         container.appendChild(card);
@@ -455,48 +493,69 @@ function renderComponentesAdicionales() {
 // ── Render principal del formulario ──────────────────────────────────────────
 
 function renderForm() {
-    const tipo = document.getElementById('tipo_remito').value;
+    const plantilla = obtenerPlantillaActual();
     const sucursal = obtenerSucursalActual();
-    const campos = RemitoFactory.getCamposFormulario(tipo, TODAY, sucursal.getId());
     const container = document.getElementById('dynamic-fields');
     if (!container) return;
 
     container.innerHTML = '';
+    if (!plantilla) {
+        container.innerHTML = '<div class="admin-empty-sm">No hay plantillas configuradas. Creá una desde ⚙️ Gestionar.</div>';
+        updatePreview();
+        return;
+    }
 
-    // Para PC+Monitor, el número aleatorio de PC y Monitor se sincroniza inicialmente
-    let numeroPcMonitor = null;
+    const campos = RemitoFactory.getCamposFormulario(plantilla, TODAY);
+    const syncGroup = plantilla.config.sincronizarCodigos ? `sync_${plantilla.id}` : null;
+    let numeroSincronizado = null;
 
     campos.forEach(campo => {
+        if (campo.tipoControl === 'separador') {
+            const sep = document.createElement('div');
+            sep.className = 'form-section-divider';
+            sep.textContent = campo.label;
+            container.appendChild(sep);
+            return;
+        }
+
         const group = document.createElement('div');
         group.className = 'form-group';
 
         if (campo.tipoControl === 'codigo') {
-            const num = (() => {
-                if (tipo === 'pc_monitor') {
-                    if (!numeroPcMonitor) numeroPcMonitor = generarSufijo();
-                    return numeroPcMonitor;
-                }
-                return generarSufijo();
-            })();
+            const num = syncGroup
+                ? (numeroSincronizado || (numeroSincronizado = generarSufijo()))
+                : generarSufijo();
 
-            initEstadoCodigo(campo.id, campo.sigla, sucursal.getId(), num);
+            initEstadoCodigo(campo.id, campo.sigla, sucursal.getId(), num, syncGroup);
             const estado = codigosEstado[campo.id];
             const autoCode = construirCodigo(campo.sigla, sucursal.getId(), num);
-
             group.innerHTML = renderCampoCodigoHTML(campo, autoCode, estado, sucursal);
 
         } else if (campo.tipoControl === 'area') {
             group.innerHTML = renderCampoAreaHTML(campo);
 
-        } else if (campo.tipoControl === 'fecha') {
+        } else if (campo.tipoControl === 'select') {
+            const cid = escapeHtml(campo.id);
+            const opts = ['<option value="">-- Seleccionar --</option>', ...(campo.opciones || []).map(o =>
+                `<option value="${escapeHtml(o)}" ${o === campo.def ? 'selected' : ''}>${escapeHtml(o)}</option>`
+            )].join('');
             group.innerHTML = `
-                <label for="${campo.id}">${campo.label}</label>
-                <input type="text" id="${campo.id}" value="${campo.def || TODAY}" placeholder="${campo.placeholder || 'Ejemplo: ' + TODAY}" oninput="updatePreview()">
+                <label for="${cid}">${escapeHtml(campo.label)}</label>
+                <select id="${cid}" onchange="updatePreview()">${opts}</select>
             `;
-        } else {
+
+        } else if (campo.tipoControl === 'fecha') {
+            const cid = escapeHtml(campo.id);
             group.innerHTML = `
-                <label for="${campo.id}">${campo.label}</label>
-                <input type="text" id="${campo.id}" value="" placeholder="${campo.placeholder || ''}" oninput="updatePreview()">
+                <label for="${cid}">${escapeHtml(campo.label)}</label>
+                <input type="text" id="${cid}" value="${escapeHtml(campo.def || TODAY)}" placeholder="${escapeHtml(campo.placeholder || 'Ejemplo: ' + TODAY)}" oninput="updatePreview()">
+            `;
+
+        } else {
+            const cid = escapeHtml(campo.id);
+            group.innerHTML = `
+                <label for="${cid}">${escapeHtml(campo.label)}</label>
+                <input type="text" id="${cid}" value="${escapeHtml(campo.def || '')}" placeholder="${escapeHtml(campo.placeholder || '')}" oninput="updatePreview()">
             `;
         }
 
@@ -506,13 +565,12 @@ function renderForm() {
     updatePreview();
 }
 
-// ── Cambio de sucursal ────────────────────────────────────────────────────────
+// ── Eventos de cambio ────────────────────────────────────────────────────────
 
 function onSucursalChange() {
     const sucursal = obtenerSucursalActual();
     const sucursalId = String(sucursal.getId());
 
-    // Actualizar sucursal en todos los códigos que estén en modo automático
     Object.keys(codigosEstado).forEach(inputId => {
         const estado = codigosEstado[inputId];
         if (estado && estado.modo === 'auto') {
@@ -521,81 +579,73 @@ function onSucursalChange() {
         }
     });
 
-    renderComponentesAdicionales();
     updatePreview();
 }
 
-// ── Cambio de tipo de remito ─────────────────────────────────────────────────
-
 function onTipoRemitoChange() {
-    // Limpiar componentes adicionales y estados al cambiar el tipo principal
     componentesAdicionales = [];
-    Object.keys(codigosEstado).forEach(k => {
-        delete codigosEstado[k];
-    });
+    Object.keys(codigosEstado).forEach(k => delete codigosEstado[k]);
     renderForm();
     renderComponentesAdicionales();
 }
 
-// ── Generar el objeto de dominio completo ─────────────────────────────────────
+// ── Construcción del Remito + Vista Previa ───────────────────────────────────
 
-function buildRemitoConExtras(tipo, sucursal) {
-    const remito = RemitoFactory.crearRemito(tipo, v, sucursal);
+function buildRemitoConExtras(plantilla, sucursal) {
+    const remito = RemitoFactory.crearRemito(plantilla, v, sucursal);
 
-    // Adjuntar los componentes adicionales como entidades de dominio
-    if (componentesAdicionales.length > 0) {
-        componentesAdicionales.forEach(comp => {
-            const inputId = `extra_cod_${comp.uid}`;
-            const estado = codigosEstado[inputId];
-            const cod = estado 
-                ? construirCodigo(estado.sigla, estado.sucursal, estado.numero)
-                : construirCodigo(comp.sigla, sucursal.getId(), generarSufijo());
+    componentesAdicionales.forEach(comp => {
+        const extraPlantilla = dataStore.buscarPlantillaPorId(comp.plantillaId);
+        if (!extraPlantilla) return;
 
-            const def = TIPOS_COMPONENTE_ADICIONAL.find(t => t.value === comp.tipo);
-            const tipoLabel = def ? def.label : comp.tipo;
+        const inputId = `extra_cod_${comp.uid}`;
+        const estado = codigosEstado[inputId];
+        const cod = estado ? construirCodigo(estado.sigla, estado.sucursal, estado.numero) : '';
 
-            const extraPeriferico = new Periferico(
-                cod,
-                comp.campos.marca || '—',
-                comp.campos.modelo || '—',
-                cod,
-                tipoLabel,
-                comp.campos.nota || ''
-            );
-            remito.agregarComponenteAdicional(extraPeriferico);
-        });
-    }
+        const eqExtra = RemitoFactory.crearComponenteAdicional(extraPlantilla, cod, comp.campos, comp.nota);
+        remito.agregarComponenteAdicional(eqExtra);
+    });
 
     return remito;
 }
 
-// ── UpdatePreview ─────────────────────────────────────────────────────────────
-
 function updatePreview() {
-    const tipo = document.getElementById('tipo_remito').value;
+    const plantilla = obtenerPlantillaActual();
     const sucursal = obtenerSucursalActual();
     const previewContainer = document.getElementById('document-preview');
     if (!previewContainer) return;
 
-    const remito = buildRemitoConExtras(tipo, sucursal);
+    if (!plantilla) {
+        previewContainer.innerHTML = '<div class="banner">Creá una plantilla para comenzar a generar remitos</div>';
+        return;
+    }
+
+    const remito = buildRemitoConExtras(plantilla, sucursal);
     previewContainer.innerHTML = renderService.renderizarHTML(remito);
-    document.title = obtenerNombreSugeridoPDF();
+    document.title = obtenerNombreSugeridoPDF(remito);
 }
 
 // ── Nombre sugerido PDF e Impresión ──────────────────────────────────────────
 
-function obtenerNombreSugeridoPDF() {
-    const tipo = document.getElementById('tipo_remito').value;
-    if (tipo === 'pc_monitor') {
-        return `Recibo_${v('cod_pc')}+${v('cod_mo')}`;
-    } else if (tipo === 'traslado') {
-        return `Recibo_Traslado_${v('cod')}`;
-    } else if (tipo === 'baja') {
-        return `Recibo_Baja_${v('cod')}`;
-    } else {
-        const cod = v('cod') !== '—' ? v('cod') : (v('sn') !== '—' ? v('sn') : 'Remito');
-        return `Recibo_${cod}`;
+function obtenerNombreSugeridoPDF(remitoObj = null) {
+    const plantilla = obtenerPlantillaActual();
+    if (!plantilla) return 'Recibo_Remito';
+
+    const prefijo = (plantilla.config && plantilla.config.prefijoPdf) || 'Recibo';
+    const seccionesConCodigo = (plantilla.config.secciones || []).filter(s => s.tieneCodigo);
+
+    if (seccionesConCodigo.length > 0) {
+        const cods = seccionesConCodigo.map((s, idx) => {
+            const fid = s.codigoFieldId || (idx === 0 ? 'cod' : `cod_${idx + 1}`);
+            return v(fid);
+        }).filter(Boolean);
+        if (cods.length > 0) {
+            return `${prefijo}_${cods.join('+')}`;
+        }
     }
+
+    const nombreLimpio = plantilla.nombre.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_\-]/g, '');
+    return `${prefijo}_${nombreLimpio || 'Remito'}`;
 }
 
 function imprimirConNombreSugerido() {
@@ -607,5 +657,25 @@ function imprimirConNombreSugerido() {
     }, 1000);
 }
 
-// ── Inicialización ───────────────────────────────────────────────────────────
-renderForm();
+// Cerrar modal con Escape
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+        const modal = document.getElementById('admin-modal');
+        if (modal && modal.classList.contains('open')) {
+            adminPanel.cerrar();
+        }
+    }
+});
+
+// ── Inicialización asíncrona desde la BD ─────────────────────────────────────
+
+async function iniciarApp() {
+    await dataStore.inicializar();
+    actualizarIndicadorBD();
+    poblarSelectTiposRemito(false);
+    poblarSelectSucursales(false);
+    renderForm();
+    renderComponentesAdicionales();
+}
+
+iniciarApp();

@@ -1,110 +1,80 @@
 /**
  * SERVICIOS Y REPOSITORIOS — MOTOZUNI S.A.
- * Implementación de IRepositorioSucursal e IRemitoRenderService (SOLID / POO)
+ * Implementación de IRepositorioSucursal, IRemitoRenderService y RemitoFactory dinámico (SOLID / POO)
  */
 
-// ── REPOSITORIO DE SUCURSALES ────────────────────────────────────────────────
+// ── HELPERS HTML ─────────────────────────────────────────────────────────────
 
-/**
- * Tabla oficial de sucursales con su respectivo código/ID según la imagen provista
- */
-const SUCURSALES_DATOS = [
-    { id: 0, nombre: "CENTRAL" },
-    { id: 10, nombre: "DOMINICO" },
-    { id: 11, nombre: "LANUS" },
-    { id: 12, nombre: "MONTE GRANDE" },
-    { id: 13, nombre: "SAN JUSTO" },
-    { id: 14, nombre: "LUIS GUILON" },
-    { id: 15, nombre: "CABA 1" },
-    { id: 16, nombre: "LOMAS DE ZAMORA" },
-    { id: 17, nombre: "QUILMES" },
-    { id: 19, nombre: "LANUS 2" },
-    { id: 20, nombre: "LUIS GUILLON 2" },
-    { id: 21, nombre: "CABA2" },
-    { id: 22, nombre: "SAN FERNANDO" },
-    { id: 23, nombre: "SAN MARTIN" },
-    { id: 24, nombre: "LA PLATA" },
-    { id: 25, nombre: "QUILMES 2" },
-    { id: 27, nombre: "VICENTE LOPEZ" },
-    { id: 28, nombre: "SARANDI" },
-    { id: 29, nombre: "BENAVIDEZ" },
-    { id: 30, nombre: "CAMPANA" },
-    { id: 31, nombre: "SAN MIGUEL" },
-    { id: 32, nombre: "MORON" },
-    { id: 33, nombre: "VARELA" }
-];
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
 
-/**
- * Interfaz para el repositorio de sucursales (Principio de Segregación de Interfaces / DIP)
- */
+// ── REPOSITORIO DE SUCURSALES (INTERFAZ + COMPATIBILIDAD) ────────────────────
+
 class IRepositorioSucursal {
-    /**
-     * @returns {Array<Sucursal>}
-     */
     obtenerTodas() {
         throw new Error("Método abstracto 'obtenerTodas' debe ser implementado.");
     }
 
-    /**
-     * @param {number} codigo 
-     * @returns {Sucursal|null}
-     */
     buscarPorCodigo(codigo) {
         throw new Error("Método abstracto 'buscarPorCodigo' debe ser implementado.");
     }
 }
 
-/**
- * Implementación en memoria del repositorio de sucursales
- */
 class RepositorioSucursalMemoria extends IRepositorioSucursal {
     #sucursales = [];
 
-    constructor(lista = SUCURSALES_DATOS) {
+    constructor(lista = (typeof DEFAULT_SUCURSALES !== 'undefined' ? DEFAULT_SUCURSALES : [])) {
         super();
-        this.#sucursales = lista.map(item => {
-            if (item instanceof Sucursal) return item;
-            return new Sucursal(item.id, item.nombre);
-        });
+        this.#sucursales = lista.map(item => (item instanceof Sucursal ? item : new Sucursal(item.id, item.nombre)));
     }
 
-    obtenerTodas() {
-        return [...this.#sucursales];
-    }
-
+    obtenerTodas() { return [...this.#sucursales]; }
     buscarPorCodigo(codigo) {
         const cod = Number(codigo);
         return this.#sucursales.find(s => s.getId() === cod) || null;
     }
+}
 
-    buscarPorNombre(nombre) {
-        if (!nombre) return null;
-        const norm = String(nombre).toUpperCase().trim();
-        return this.#sucursales.find(s => 
-            s.getNombreCompleto().toUpperCase() === norm || 
-            s.getNombre().toUpperCase() === norm.replace(/^MOTOZUNI\s+S\.?\s*A\.?\s*/i, '').trim()
-        ) || null;
+class RepositorioSucursalStore extends IRepositorioSucursal {
+    #store;
+
+    constructor(store) {
+        super();
+        this.#store = store;
+    }
+
+    obtenerTodas() {
+        return this.#store.obtenerSucursales();
+    }
+
+    buscarPorCodigo(codigo) {
+        return this.#store.buscarSucursalPorCodigo(codigo);
     }
 }
 
+// ── MAPA DE TEMAS DE COLOR ───────────────────────────────────────────────────
+
+const TEMAS_COLOR_REMITO = {
+    azul:    { principal: 'var(--cp)',      secundario: 'var(--cs)',      borde: 'var(--cl)' },
+    naranja: { principal: 'var(--naranja)', secundario: 'var(--naranja)', borde: 'var(--naranja)' },
+    rojo:    { principal: 'var(--rojo)',    secundario: 'var(--rojo)',    borde: 'var(--rojo)' },
+    verde:   { principal: 'var(--verde)',   secundario: 'var(--verde)',   borde: 'var(--verde)' }
+};
+
 // ── SERVICIO DE RENDERIZADO HTML DE REMITOS ──────────────────────────────────
 
-/**
- * Interfaz para el servicio de renderizado de remitos (DIP / OCP)
- */
 class IRemitoRenderService {
-    /**
-     * @param {Remito} remito 
-     * @returns {string} Código HTML del remito
-     */
     renderizarHTML(remito) {
         throw new Error("Método abstracto 'renderizarHTML' debe ser implementado.");
     }
 }
 
-/**
- * Implementación que genera la vista previa y formato imprimible para hoja A4
- */
 class RemitoHtmlRenderService extends IRemitoRenderService {
 
     renderizarHTML(remito) {
@@ -112,85 +82,138 @@ class RemitoHtmlRenderService extends IRemitoRenderService {
             return '<div class="banner">Error: Remito inválido o no especificado.</div>';
         }
 
-        const headerHtml = this.renderHeader(remito);
-        const datosHtml = this.renderTablaDatos(remito);
-        const conformidadHtml = this.renderBloqueConformidad(remito);
-        const firmasHtml = this.renderBloqueFirmas(remito);
+        if (remito instanceof RemitoDinamico) {
+            return this.#renderizarRemitoDinamico(remito);
+        }
+
+        return '<div class="banner">Formato de remito no soportado.</div>';
+    }
+
+    /**
+     * Devuelve el valor textual escapado o una línea punteada si el campo está vacío para llenarlo a mano
+     */
+    formatearTextoOLineaPunteada(valor, tipo = 'normal') {
+        if (valor && valor !== '—' && String(valor).trim() !== '') {
+            return escapeHtml(valor);
+        }
+        if (tipo === 'fecha') return '<span class="linea-punteada linea-punteada-fecha"></span>';
+        if (tipo === 'nombre') return '<span class="linea-punteada linea-punteada-nombre"></span>';
+        if (tipo === 'tabla') return '<span class="linea-punteada linea-punteada-tabla"></span>';
+        return '<span class="linea-punteada"></span>';
+    }
+
+    #getTema(remito) {
+        const plantilla = remito.getPlantilla();
+        const key = (plantilla && plantilla.config && plantilla.config.colorTema) || 'azul';
+        return TEMAS_COLOR_REMITO[key] || TEMAS_COLOR_REMITO.azul;
+    }
+
+    /**
+     * Reemplaza variables {{campo}} dentro de plantillas de texto (subtítulo, declaración de conformidad)
+     */
+    #interpolarTexto(templateStr, remito, { usarLineasPunteadas = false } = {}) {
+        if (!templateStr) return '';
+        const plantilla = remito.getPlantilla();
+        const valores = remito.getValores();
+        const secciones = remito.getSeccionesResueltas();
+        const primeraSec = secciones[0] || null;
+        const sucNombre = remito.getSucursal() ? remito.getSucursal().getNombreCompleto() : 'MOTOZUNI S.A.';
+
+        return String(templateStr).replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, key) => {
+            if (key === 'nombre' || key === 'nombre1' || key === 'nombre2') {
+                const raw = key === 'nombre1'
+                    ? remito.getPersonaEntrega()
+                    : key === 'nombre2'
+                        ? remito.getPersonaRecibe()
+                        : (plantilla.tipo_flujo === 'baja' ? remito.getPersonaDevuelve() : remito.getAsignadoA());
+                return usarLineasPunteadas
+                    ? this.formatearTextoOLineaPunteada(raw, 'nombre')
+                    : (raw && raw !== '—' ? escapeHtml(raw) : '—');
+            }
+            if (key === 'fecha') {
+                const raw = remito.getFecha();
+                return usarLineasPunteadas
+                    ? this.formatearTextoOLineaPunteada(raw, 'fecha')
+                    : (raw && raw !== '—' ? escapeHtml(raw) : '___/___/______');
+            }
+            if (key === 'sucursal') return escapeHtml(sucNombre);
+            if (key === 'componente' || key === 'plantilla') return escapeHtml(plantilla.nombre);
+            if (key === 'codigo') {
+                const cod = primeraSec && primeraSec.tieneCodigo ? primeraSec.codigo : '';
+                return cod ? escapeHtml(cod) : '—';
+            }
+
+            // Buscar primero en los códigos de secciones
+            const secMatch = secciones.find(s => s.tieneCodigo && s.codigoFieldId === key);
+            if (secMatch) return escapeHtml(secMatch.codigo || '—');
+
+            const val = valores[key];
+            if (val !== undefined && val !== null && String(val).trim() !== '' && val !== '—') {
+                return escapeHtml(val);
+            }
+            return '—';
+        });
+    }
+
+    #renderizarRemitoDinamico(remito) {
+        const plantilla = remito.getPlantilla();
+        const flujo = plantilla.tipo_flujo || 'entrega';
+        const tema = this.#getTema(remito);
+
+        const headerHtml = this.#renderHeaderDinamico(remito, tema);
+        let cuerpoHtml = '';
+
+        if (flujo === 'traslado') {
+            cuerpoHtml = this.#renderCuerpoTraslado(remito, tema);
+        } else if (flujo === 'baja') {
+            cuerpoHtml = this.#renderCuerpoBaja(remito, tema);
+        } else {
+            cuerpoHtml = this.#renderCuerpoEntrega(remito, tema);
+        }
+
+        const extrasHtml = this.#renderComponentesAdicionales(remito, tema);
+        const conformidadHtml = this.#renderConformidadDinamica(remito, tema);
+        const firmasHtml = this.#renderFirmasYFooter(remito);
 
         return `
             <div>
                 ${headerHtml}
-                ${datosHtml}
+                ${cuerpoHtml}
+                ${extrasHtml}
                 ${conformidadHtml}
                 ${firmasHtml}
             </div>
         `;
     }
 
-    /**
-     * Devuelve el valor textual o una línea punteada si el campo está vacío para llenarlo a mano
-     * @param {string} valor 
-     * @param {'normal'|'fecha'|'nombre'|'tabla'} tipo 
-     * @returns {string}
-     */
-    formatearTextoOLineaPunteada(valor, tipo = 'normal') {
-        if (valor && valor !== '—' && String(valor).trim() !== '') {
-            return valor;
-        }
-        if (tipo === 'fecha') {
-            return '<span class="linea-punteada linea-punteada-fecha"></span>';
-        }
-        if (tipo === 'nombre') {
-            return '<span class="linea-punteada linea-punteada-nombre"></span>';
-        }
-        if (tipo === 'tabla') {
-            return '<span class="linea-punteada linea-punteada-tabla"></span>';
-        }
-        return '<span class="linea-punteada"></span>';
-    }
+    #renderHeaderDinamico(remito, tema) {
+        const plantilla = remito.getPlantilla();
+        const cfg = plantilla.config;
+        const flujo = plantilla.tipo_flujo || 'entrega';
+        const sucNombre = remito.getSucursal() ? remito.getSucursal().getNombreCompleto() : 'MOTOZUNI S.A.';
+        const seccionesConCodigo = remito.getSeccionesResueltas().filter(s => s.tieneCodigo && s.codigo && s.codigo !== '—');
 
-    renderHeader(remito) {
-        const sucursalNombre = remito.getSucursal() 
-            ? remito.getSucursal().getNombreCompleto() 
-            : 'MOTOZUNI S.A.';
-
-        let tituloDer = remito.getIdDocumento();
-        let subtituloDer = remito.getTipoRemito();
-        let colorTema = 'var(--cp)';
-        let colorSub = 'var(--cs)';
-
-        if (remito instanceof RemitoPcMonitor) {
-            const pc = remito.getComputadora();
-            const mo = remito.getMonitor();
-            tituloDer = `${pc.getCodigo()} + ${mo.getCodigo()}`;
-            subtituloDer = 'Computadora + Monitor';
-        } else if (remito instanceof RemitoTraslado) {
+        let tituloDer = '';
+        if (flujo === 'traslado') {
             tituloDer = 'TRASLADO';
-            subtituloDer = `${remito.getPersonaEntrega()} → ${remito.getPersonaRecibe()}`;
-            colorTema = 'var(--naranja)';
-            colorSub = 'var(--naranja)';
-        } else if (remito instanceof RemitoBaja) {
-            const eq = remito.getEquipamiento();
-            tituloDer = eq ? eq.getCodigo() : remito.getIdDocumento();
+        } else if (seccionesConCodigo.length > 0) {
+            tituloDer = seccionesConCodigo.map(s => escapeHtml(s.codigo)).join(' + ');
+        } else {
+            tituloDer = escapeHtml(plantilla.nombre.toUpperCase());
+        }
+
+        let subtituloDer = '';
+        if (cfg.subtituloHeader && cfg.subtituloHeader.trim() !== '') {
+            subtituloDer = this.#interpolarTexto(cfg.subtituloHeader, remito, { usarLineasPunteadas: false });
+        } else if (flujo === 'baja') {
             subtituloDer = 'BAJA / DEVOLUCIÓN';
-            colorTema = 'var(--rojo)';
-            colorSub = 'var(--rojo)';
-        } else if (remito instanceof RemitoEquipamientoEstandar) {
-            const eq = remito.getEquipamiento();
-            if (eq instanceof Celular) {
-                tituloDer = eq.getCodigo();
-                subtituloDer = `Celular ${eq.getMarca()} ${eq.getModelo()}`;
-            } else if (eq instanceof Notebook) {
-                tituloDer = eq.getCodigo();
-                subtituloDer = `Notebook ${eq.getMarca()} ${eq.getModelo()}`;
-            } else if (eq instanceof Periferico || eq instanceof Accesorio) {
-                const sn = eq.getNumeroSerie();
-                tituloDer = (sn && sn !== '—' && sn !== 'N/A') ? sn : eq.getTipoDescripcion();
-                subtituloDer = `${eq.getTipoDescripcion()} — ${eq.getMarca()} ${eq.getModelo()}`;
-            } else if (eq) {
-                tituloDer = eq.getCodigo();
-                subtituloDer = `${eq.getTipoDescripcion()} ${eq.getMarca()} ${eq.getModelo()}`;
-            }
+        } else if (flujo === 'traslado') {
+            subtituloDer = `${escapeHtml(remito.getPersonaEntrega() || '—')} → ${escapeHtml(remito.getPersonaRecibe() || '—')}`;
+        } else {
+            const marca = remito.getValor('marca', '');
+            const modelo = remito.getValor('modelo', '');
+            const detalle = [marca, modelo].filter(x => x && x !== '—').join(' ');
+            subtituloDer = escapeHtml(detalle ? `${plantilla.nombre} — ${detalle}` : plantilla.nombre);
         }
 
         return `
@@ -199,161 +222,106 @@ class RemitoHtmlRenderService extends IRemitoRenderService {
                     <td>
                         <div class="header-title-left">MOTOZUNI S.A.</div>
                         <div class="header-sub-left">Sistema de Gestión de Dispositivos</div>
-                        <div class="header-sub-left">${sucursalNombre}</div>
+                        <div class="header-sub-left">${escapeHtml(sucNombre)}</div>
                     </td>
                     <td>
-                        <div class="header-title-right" style="color: ${colorTema};">${tituloDer}</div>
-                        <div class="header-sub-right" style="color: ${colorSub};">${subtituloDer}</div>
+                        <div class="header-title-right" style="color: ${tema.principal};">${tituloDer}</div>
+                        <div class="header-sub-right" style="color: ${tema.secundario};">${subtituloDer}</div>
                     </td>
                 </tr>
             </table>
-            <div class="divider-hr" style="background-color: ${colorTema};"></div>
+            <div class="divider-hr" style="background-color: ${tema.principal};"></div>
         `;
     }
 
-    renderTablaDatos(remito) {
-        let html = '';
-        if (remito instanceof RemitoTraslado) {
-            html = this.#renderDatosTraslado(remito);
-        } else if (remito instanceof RemitoBaja) {
-            html = this.#renderDatosBaja(remito);
-        } else if (remito instanceof RemitoPcMonitor) {
-            html = this.#renderDatosPcMonitor(remito);
-        } else if (remito instanceof RemitoEquipamientoEstandar) {
-            html = this.#renderDatosEquipamientoEstandar(remito);
+    #renderCuerpoEntrega(remito, tema) {
+        const plantilla = remito.getPlantilla();
+        const cfg = plantilla.config;
+        const sucNombre = remito.getSucursal() ? remito.getSucursal().getNombreCompleto() : '—';
+        let html = `<div class="banner" style="background-color: ${tema.principal};">${escapeHtml(cfg.bannerTitulo || 'RECIBO DE ENTREGA DE DISPOSITIVOS')}</div>`;
+
+        if (cfg.incluirDatosAsignacion) {
+            const datosAsignacion = [
+                ['Asignado a', this.formatearTextoOLineaPunteada(remito.getAsignadoA(), 'tabla')],
+                ['Área / Equipo', escapeHtml(remito.getAreaEquipo())],
+            ];
+            if (cfg.mostrarEmailAsignacion) {
+                datosAsignacion.push(['Email', escapeHtml(remito.getEmail())]);
+            }
+            datosAsignacion.push(['Sucursal', escapeHtml(sucNombre)]);
+            datosAsignacion.push(['Fecha asignación', this.formatearTextoOLineaPunteada(remito.getFecha(), 'fecha')]);
+            if (datosAsignacion.length % 2 !== 0) {
+                datosAsignacion.push(['', '']);
+            }
+
+            html += `
+                <div class="sec-header" style="background-color: ${tema.secundario};">DATOS DE ASIGNACIÓN</div>
+                ${this.renderTablaEspecificaciones(datosAsignacion, { valoresYaHtml: true })}
+            `;
         }
 
-        // Renderizado de componentes adicionales agregados al remito
-        const extras = (remito && typeof remito.getComponentesAdicionales === 'function')
-            ? remito.getComponentesAdicionales()
-            : (remito ? (remito._componentesAdicionales || []) : []);
+        remito.getSeccionesResueltas().forEach(sec => {
+            if (sec.opcional && !sec.tieneDatosUsuario) return;
+            const tituloSec = sec.tieneCodigo && sec.codigo && sec.codigo !== '—'
+                ? `${escapeHtml(sec.titulo.toUpperCase())} — ${escapeHtml(sec.codigo)}`
+                : escapeHtml(sec.titulo.toUpperCase());
 
-        if (Array.isArray(extras) && extras.length > 0) {
-            extras.forEach(extra => {
-                const tipoDesc = extra.getTipoDescripcion().toUpperCase();
-                const codDesc = extra.getCodigo();
-                html += `
-                    <div class="sec-header">${tipoDesc} — ${codDesc}</div>
-                    ${this.renderTablaEspecificaciones(extra.getEspecificaciones())}
-                `;
-                const notaExtra = extra.getNotaAdicional ? extra.getNotaAdicional() : '';
-                if (notaExtra && notaExtra !== '—' && String(notaExtra).trim() !== '') {
-                    html += `<div style="font-size:7pt; color:var(--csu); margin-top:4px;">* ${notaExtra}</div>`;
-                }
-            });
+            html += `
+                <div class="sec-header" style="background-color: ${tema.secundario};">${tituloSec}</div>
+                ${this.renderTablaEspecificaciones(sec.pares)}
+            `;
+        });
+
+        const nota = remito.getNotaAdicional();
+        if (cfg.incluirNotaAdicional && nota && nota !== '—' && String(nota).trim() !== '') {
+            html += `<div style="font-size:7pt; color:var(--csu); margin-top:4px;">* ${escapeHtml(nota)}</div>`;
         }
 
         return html;
     }
 
-    #renderDatosPcMonitor(remito) {
-        const pc = remito.getComputadora();
-        const mo = remito.getMonitor();
-        const suc = remito.getSucursal() ? remito.getSucursal().getNombreCompleto() : '—';
-
-        const datosAsignacion = [
-            ['Asignado a', this.formatearTextoOLineaPunteada(remito.getAsignadoA(), 'tabla')],
-            ['Área / Equipo', remito.getAreaEquipo()],
-            ['Email', remito.getEmail()],
-            ['Sucursal', suc],
-            ['Fecha asignación', this.formatearTextoOLineaPunteada(remito.getFecha(), 'fecha')],
-            ['', '']
-        ];
-
-        let notaHtml = '';
-        const nota = remito.getNotaAdicional ? remito.getNotaAdicional() : '';
-        if (nota && nota !== '—' && String(nota).trim() !== '') {
-            notaHtml = `<div style="font-size:7pt; color:var(--csu); margin-top:4px;">* ${nota}</div>`;
-        }
-
-        return `
-            <div class="banner">RECIBO DE ENTREGA DE DISPOSITIVOS</div>
-
-            <div class="sec-header">DATOS DE ASIGNACIÓN</div>
-            ${this.renderTablaEspecificaciones(datosAsignacion)}
-
-            <div class="sec-header">COMPUTADORA — ${pc.getCodigo()}</div>
-            ${this.renderTablaEspecificaciones(pc.getEspecificaciones())}
-
-            <div class="sec-header">MONITOR — ${mo.getCodigo()}</div>
-            ${this.renderTablaEspecificaciones(mo.getEspecificaciones())}
-            ${notaHtml}
-        `;
-    }
-
-    #renderDatosEquipamientoEstandar(remito) {
-        const eq = remito.getEquipamiento();
-        const suc = remito.getSucursal() ? remito.getSucursal().getNombreCompleto() : '—';
-
-        const datosAsignacion = [
-            ['Asignado a', this.formatearTextoOLineaPunteada(remito.getAsignadoA(), 'tabla')],
-            ['Área / Equipo', remito.getAreaEquipo()],
-            ['Email', remito.getEmail()],
-            ['Sucursal', suc],
-            ['Fecha asignación', this.formatearTextoOLineaPunteada(remito.getFecha(), 'fecha')],
-            ['', '']
-        ];
-
-        let htmlExtra = '';
-        if (eq instanceof Celular && eq.getLineaSim() && eq.getLineaSim().getNumeroLinea() !== '—') {
-            htmlExtra += `
-                <div class="sec-header">CHIP SIM</div>
-                ${this.renderTablaEspecificaciones(eq.getLineaSim().getEspecificaciones())}
-            `;
-        }
-
-        let notaExtra = '';
-        const notaEq = (eq && typeof eq.getNotaAdicional === 'function') ? eq.getNotaAdicional() : '';
-        const notaRemito = (remito && typeof remito.getNotaAdicional === 'function') ? remito.getNotaAdicional() : '';
-        const notaFinal = notaEq || notaRemito;
-        if (notaFinal && notaFinal !== '—' && String(notaFinal).trim() !== '') {
-            notaExtra = `<div style="font-size:7pt; color:var(--csu); margin-top:4px;">* ${notaFinal}</div>`;
-        }
-
-        const tituloSeccion = eq ? `${eq.getTipoDescripcion().toUpperCase()} — ${eq.getCodigo()}` : 'DISPOSITIVO';
-
-        return `
-            <div class="banner">RECIBO DE ENTREGA DE DISPOSITIVOS</div>
-
-            <div class="sec-header">DATOS DE ASIGNACIÓN</div>
-            ${this.renderTablaEspecificaciones(datosAsignacion)}
-
-            <div class="sec-header">${tituloSeccion}</div>
-            ${this.renderTablaEspecificaciones(eq ? eq.getEspecificaciones() : [])}
-            ${notaExtra}
-            ${htmlExtra}
-        `;
-    }
-
-    #renderDatosTraslado(remito) {
-        const eq = remito.getEquipamiento();
+    #renderCuerpoTraslado(remito, tema) {
+        const plantilla = remito.getPlantilla();
+        const cfg = plantilla.config;
+        const secciones = remito.getSeccionesResueltas();
+        const secPrincipal = secciones[0];
         const fechaHtml = this.formatearTextoOLineaPunteada(remito.getFecha(), 'fecha');
         const nom1Html = this.formatearTextoOLineaPunteada(remito.getPersonaEntrega(), 'nombre');
         const nom2Html = this.formatearTextoOLineaPunteada(remito.getPersonaRecibe(), 'nombre');
 
-        const datosDispositivo = [
-            ['Tipo', eq ? eq.getTipoDescripcion() : 'Dispositivo'],
-            ['Marca', eq ? eq.getMarca() : '—'],
-            ['Modelo', eq ? eq.getModelo() : '—'],
-            ['N° Serie', eq ? eq.getNumeroSerie() : '—'],
-            ['Código', eq ? eq.getCodigo() : remito.getIdDocumento()],
-            ['Fecha traslado', fechaHtml]
-        ];
+        const paresDisp = secPrincipal ? [...secPrincipal.pares] : [];
+        paresDisp.push(['Fecha traslado', fechaHtml]);
 
-        return `
-            <div class="banner" style="background-color: var(--naranja);">REMITO DE TRASLADO DE DISPOSITIVO</div>
+        const descDisp = this.#construirResumenDispositivo(remito);
+        const codTexto = secPrincipal && secPrincipal.tieneCodigo && secPrincipal.codigo
+            ? ` (Cód: <b>${escapeHtml(secPrincipal.codigo)}</b>)`
+            : '';
 
-            <div class="sec-header" style="background-color: var(--naranja);">DISPOSITIVO</div>
-            ${this.renderTablaEspecificaciones(datosDispositivo)}
+        let html = `<div class="banner" style="background-color: ${tema.principal};">${escapeHtml(cfg.bannerTitulo || 'REMITO DE TRASLADO DE DISPOSITIVO')}</div>`;
 
+        html += `
+            <div class="sec-header" style="background-color: ${tema.principal};">${escapeHtml((secPrincipal?.titulo || 'DISPOSITIVO').toUpperCase())}</div>
+            ${this.renderTablaEspecificaciones(paresDisp, { ultimaFilaHtml: true })}
+        `;
+
+        // Secciones adicionales propias de la plantilla si existieran
+        secciones.slice(1).forEach(sec => {
+            if (sec.opcional && !sec.tieneDatosUsuario) return;
+            const tituloSec = sec.tieneCodigo && sec.codigo ? `${sec.titulo.toUpperCase()} — ${sec.codigo}` : sec.titulo.toUpperCase();
+            html += `
+                <div class="sec-header" style="background-color: ${tema.secundario};">${escapeHtml(tituloSec)}</div>
+                ${this.renderTablaEspecificaciones(sec.pares)}
+            `;
+        });
+
+        html += `
             <div class="sec-header" style="background-color: var(--rojo);">ENTREGA</div>
             <div class="conf-text">
-                Yo, <b>${nom1Html}</b>, con fecha <b>${fechaHtml}</b>, declaro haber entregado la 
-                <b>${eq ? eq.getTipoDescripcion() : ''} ${eq ? eq.getMarca() : ''} ${eq ? eq.getModelo() : ''}</b> 
-                (Cód: <b>${eq ? eq.getCodigo() : remito.getIdDocumento()}</b>).
+                Yo, <b>${nom1Html}</b>, con fecha <b>${fechaHtml}</b>, declaro haber entregado 
+                <b>${escapeHtml(descDisp)}</b>${codTexto}.
             </div>
             <div style="font-weight: bold; font-size: 7.5pt; color: var(--csu); margin-top: 5px;">
-                ${remito.getPersonaEntrega()} — ${remito.getAreaEntrega()}
+                ${escapeHtml(remito.getPersonaEntrega() || '—')} — ${escapeHtml(remito.getAreaEntrega())}
             </div>
             <table class="signatures-table" style="margin-top: 15px; margin-bottom: 5px;">
                 <tr>
@@ -365,12 +333,11 @@ class RemitoHtmlRenderService extends IRemitoRenderService {
 
             <div class="sec-header" style="background-color: var(--verde); margin-top: 15px;">RECEPCIÓN</div>
             <div class="conf-text">
-                Yo, <b>${nom2Html}</b>, con fecha <b>${fechaHtml}</b>, declaro haber recibido la 
-                <b>${eq ? eq.getTipoDescripcion() : ''} ${eq ? eq.getMarca() : ''} ${eq ? eq.getModelo() : ''}</b> 
-                (Cód: <b>${eq ? eq.getCodigo() : remito.getIdDocumento()}</b>), comprometiéndome a hacer un uso responsable de la misma.
+                Yo, <b>${nom2Html}</b>, con fecha <b>${fechaHtml}</b>, declaro haber recibido 
+                <b>${escapeHtml(descDisp)}</b>${codTexto}, comprometiéndome a hacer un uso responsable del mismo.
             </div>
             <div style="font-weight: bold; font-size: 7.5pt; color: var(--csu); margin-top: 5px;">
-                ${remito.getPersonaRecibe()} — ${remito.getAreaRecibe()}
+                ${escapeHtml(remito.getPersonaRecibe() || '—')} — ${escapeHtml(remito.getAreaRecibe())}
             </div>
             <table class="signatures-table" style="margin-top: 15px; margin-bottom: 5px;">
                 <tr>
@@ -380,136 +347,134 @@ class RemitoHtmlRenderService extends IRemitoRenderService {
                 </tr>
             </table>
         `;
+        return html;
     }
 
-    #renderDatosBaja(remito) {
-        const eq = remito.getEquipamiento();
-        const suc = remito.getSucursal() ? remito.getSucursal().getNombreCompleto() : '—';
-        const cod = eq ? eq.getCodigo() : remito.getIdDocumento();
+    #renderCuerpoBaja(remito, tema) {
+        const plantilla = remito.getPlantilla();
+        const cfg = plantilla.config;
+        const sucNombre = remito.getSucursal() ? remito.getSucursal().getNombreCompleto() : '—';
         const nomHtml = this.formatearTextoOLineaPunteada(remito.getPersonaDevuelve(), 'tabla');
         const fechaHtml = this.formatearTextoOLineaPunteada(remito.getFecha(), 'fecha');
 
         const datosResp = [
             ['Nombre', nomHtml],
-            ['Área', remito.getAreaEquipo()],
-            ['Sucursal', suc],
+            ['Área', escapeHtml(remito.getAreaEquipo())],
+            ['Sucursal', escapeHtml(sucNombre)],
             ['Fecha devolución', fechaHtml]
         ];
 
-        const datosDisp = [
-            ['Código', cod], ['Tipo', eq ? eq.getTipoDescripcion() : 'Dispositivo'],
-            ['Marca', eq ? eq.getMarca() : '—'], ['Modelo', eq ? eq.getModelo() : '—'],
-            ['N° Serie', eq ? eq.getNumeroSerie() : '—'], ['Estado', 'Dado de baja'],
-            ['Motivo', remito.getMotivoBaja()], ['', '']
-        ];
-
-        return `
-            <div class="banner" style="background-color: var(--rojo);">REMITO DE DEVOLUCIÓN / BAJA DE DISPOSITIVO</div>
-
-            <div class="sec-header" style="background-color: var(--rojo);">DATOS DEL RESPONSABLE</div>
-            ${this.renderTablaEspecificaciones(datosResp)}
-
-            <div class="sec-header" style="background-color: var(--rojo);">DISPOSITIVO — ${cod}</div>
-            ${this.renderTablaEspecificaciones(datosDisp)}
+        let html = `
+            <div class="banner" style="background-color: ${tema.principal};">${escapeHtml(cfg.bannerTitulo || 'REMITO DE DEVOLUCIÓN / BAJA DE DISPOSITIVO')}</div>
+            <div class="sec-header" style="background-color: ${tema.secundario};">DATOS DEL RESPONSABLE</div>
+            ${this.renderTablaEspecificaciones(datosResp, { valoresYaHtml: true })}
         `;
+
+        remito.getSeccionesResueltas().forEach(sec => {
+            if (sec.opcional && !sec.tieneDatosUsuario) return;
+            const tituloSec = sec.tieneCodigo && sec.codigo && sec.codigo !== '—'
+                ? `${escapeHtml(sec.titulo.toUpperCase())} — ${escapeHtml(sec.codigo)}`
+                : escapeHtml(sec.titulo.toUpperCase());
+
+            html += `
+                <div class="sec-header" style="background-color: ${tema.secundario};">${tituloSec}</div>
+                ${this.renderTablaEspecificaciones(sec.pares)}
+            `;
+        });
+
+        return html;
     }
 
-    renderBloqueConformidad(remito) {
-        if (remito instanceof RemitoTraslado) {
-            return '';
-        }
+    #renderComponentesAdicionales(remito, tema) {
+        const extras = remito.getComponentesAdicionales();
+        if (!Array.isArray(extras) || extras.length === 0) return '';
+
+        let html = '';
+        extras.forEach(extra => {
+            const tipoDesc = escapeHtml(extra.getTipoDescripcion().toUpperCase());
+            const tieneCod = typeof extra.tieneCodigo === 'function' ? extra.tieneCodigo() : true;
+            const cod = extra.getCodigo();
+            const headerTitulo = (tieneCod && cod && cod !== '—') ? `${tipoDesc} — ${escapeHtml(cod)}` : tipoDesc;
+
+            html += `
+                <div class="sec-header" style="background-color: ${tema.secundario};">${headerTitulo}</div>
+                ${this.renderTablaEspecificaciones(extra.getEspecificaciones())}
+            `;
+            const notaExtra = extra.getNotaAdicional ? extra.getNotaAdicional() : '';
+            if (notaExtra && notaExtra !== '—' && String(notaExtra).trim() !== '') {
+                html += `<div style="font-size:7pt; color:var(--csu); margin-top:4px;">* ${escapeHtml(notaExtra)}</div>`;
+            }
+        });
+        return html;
+    }
+
+    #construirResumenDispositivo(remito) {
+        const plantilla = remito.getPlantilla();
+        const tipo = remito.getValor('tipo_disp', '') || remito.getValor('tipo_name', '') || plantilla.nombre;
+        const marca = remito.getValor('marca', '');
+        const modelo = remito.getValor('modelo', '');
+        return [tipo, marca, modelo].filter(x => x && x !== '—').join(' ') || plantilla.nombre;
+    }
+
+    #renderConformidadDinamica(remito, tema) {
+        const plantilla = remito.getPlantilla();
+        const cfg = plantilla.config;
+        const flujo = plantilla.tipo_flujo || 'entrega';
+
+        if (flujo === 'traslado') return '';
 
         const fechaHtml = this.formatearTextoOLineaPunteada(remito.getFecha(), 'fecha');
+        const secciones = remito.getSeccionesResueltas();
+        const primeraSec = secciones[0];
 
-        if (remito instanceof RemitoBaja) {
-            const eq = remito.getEquipamiento();
-            const nomHtml = this.formatearTextoOLineaPunteada(remito.getPersonaDevuelve(), 'nombre');
-            const cod = eq ? eq.getCodigo() : remito.getIdDocumento();
-            const desc = `${eq ? eq.getTipoDescripcion() : ''} ${eq ? eq.getMarca() : ''} ${eq ? eq.getModelo() : ''}`.trim();
-
-            return `
-                <div style="border-top: 1px solid var(--rojo); margin-top: 10px; padding-top: 5px;"></div>
-                <div class="banner" style="background-color: var(--rojo);">DECLARACIÓN DE DEVOLUCIÓN</div>
-                <div class="conf-text">
-                    Yo, <b>${nomHtml}</b>, con fecha <b>${fechaHtml}</b>, declaro haber devuelto el dispositivo 
-                    <b>${desc}</b> (Cód: <b>${cod}</b>) en las condiciones indicadas.
-                </div>
-            `;
-        }
-
-        const nomHtml = this.formatearTextoOLineaPunteada(remito.getAsignadoA(), 'nombre');
         let textoDeclaracion = '';
-
-        if (remito instanceof RemitoPcMonitor) {
-            const pc = remito.getComputadora();
-            const mo = remito.getMonitor();
-            textoDeclaracion = `
-                Yo, <b>${nomHtml}</b>, con fecha <b>${fechaHtml}</b>, declaro haber recibido 
-                <b>Computadora ${pc.getMarca()} ${pc.getModelo()}</b> (Cód: <b>${pc.getCodigo()}</b>) y 
-                <b>Monitor ${mo.getMarca()} ${mo.getModelo()}</b> (Cód: <b>${mo.getCodigo()}</b>), en las condiciones descritas, 
-                comprometiéndome a hacer un uso responsable del mismo.
-            `;
-        } else if (remito instanceof RemitoEquipamientoEstandar) {
-            const eq = remito.getEquipamiento();
-            if (eq instanceof Celular) {
-                textoDeclaracion = `
-                    Yo, <b>${nomHtml}</b>, con fecha <b>${fechaHtml}</b>, declaro haber recibido 
-                    <b>Celular ${eq.getMarca()} ${eq.getModelo()}</b> (Cód: <b>${eq.getCodigo()}</b>, S/N: <b>${eq.getNumeroSerie()}</b>), 
-                    en las condiciones descritas, comprometiéndome a hacer un uso responsable del mismo.
-                `;
-            } else if (eq instanceof Notebook) {
-                textoDeclaracion = `
-                    Yo, <b>${nomHtml}</b>, con fecha <b>${fechaHtml}</b>, declaro haber recibido 
-                    <b>Notebook ${eq.getMarca()} ${eq.getModelo()}</b> (Cód: <b>${eq.getCodigo()}</b>), en las condiciones descritas, 
-                    comprometiéndome a hacer un uso responsable del mismo.
-                `;
-            } else if (eq instanceof Periferico || eq instanceof Accesorio) {
-                textoDeclaracion = `
-                    Yo, <b>${nomHtml}</b>, con fecha <b>${fechaHtml}</b>, declaro haber recibido 
-                    <b>${eq.getTipoDescripcion()} ${eq.getMarca()} ${eq.getModelo()}</b> (S/N: <b>${eq.getNumeroSerie()}</b>), 
-                    en las condiciones descritas, comprometiéndome a hacer un uso responsable del mismo.
-                `;
-            } else {
-                textoDeclaracion = `
-                    Yo, <b>${nomHtml}</b>, con fecha <b>${fechaHtml}</b>, declaro haber recibido el dispositivo indicado,
-                    en las condiciones descritas, comprometiéndome a hacer un uso responsable del mismo.
-                `;
-            }
+        if (cfg.textoConformidad && cfg.textoConformidad.trim() !== '') {
+            textoDeclaracion = this.#interpolarTexto(cfg.textoConformidad, remito, { usarLineasPunteadas: true });
+        } else if (flujo === 'baja') {
+            const nomHtml = this.formatearTextoOLineaPunteada(remito.getPersonaDevuelve(), 'nombre');
+            const desc = escapeHtml(this.#construirResumenDispositivo(remito));
+            const codParte = (primeraSec && primeraSec.tieneCodigo && primeraSec.codigo)
+                ? ` (Cód: <b>${escapeHtml(primeraSec.codigo)}</b>)` : '';
+            textoDeclaracion = `Yo, <b>${nomHtml}</b>, con fecha <b>${fechaHtml}</b>, declaro haber devuelto <b>${desc}</b>${codParte} en las condiciones indicadas.`;
+        } else {
+            const nomHtml = this.formatearTextoOLineaPunteada(remito.getAsignadoA(), 'nombre');
+            const desc = escapeHtml(this.#construirResumenDispositivo(remito));
+            const codParte = (primeraSec && primeraSec.tieneCodigo && primeraSec.codigo)
+                ? ` (Cód: <b>${escapeHtml(primeraSec.codigo)}</b>)` : '';
+            textoDeclaracion = `Yo, <b>${nomHtml}</b>, con fecha <b>${fechaHtml}</b>, declaro haber recibido <b>${desc}</b>${codParte}, en las condiciones descritas, comprometiéndome a hacer un uso responsable del mismo.`;
         }
+
+        const bannerConf = flujo === 'baja' ? 'DECLARACIÓN DE DEVOLUCIÓN' : 'RECIBIDO – CONFORMIDAD DE ENTREGA';
+        const borderTopColor = flujo === 'baja' ? tema.principal : 'var(--cl)';
 
         return `
-            <div style="border-top: 1px solid var(--cl); margin-top: 10px; padding-top: 5px;"></div>
-            <div class="banner">RECIBIDO – CONFORMIDAD DE ENTREGA</div>
-            <div class="conf-text">
-                ${textoDeclaracion}
-            </div>
+            <div style="border-top: 1px solid ${borderTopColor}; margin-top: 10px; padding-top: 5px;"></div>
+            <div class="banner" style="background-color: ${tema.principal};">${bannerConf}</div>
+            <div class="conf-text">${textoDeclaracion}</div>
         `;
     }
 
-    renderBloqueFirmas(remito) {
-        let footerId = remito.getIdDocumento();
-        if (remito instanceof RemitoPcMonitor) {
-            footerId = `${remito.getComputadora().getCodigo()} + ${remito.getMonitor().getCodigo()}`;
-        } else if (remito instanceof RemitoBaja) {
-            footerId = `BAJA ${remito.getEquipamiento() ? remito.getEquipamiento().getCodigo() : remito.getIdDocumento()}`;
-        } else if (remito instanceof RemitoEquipamientoEstandar) {
-            const eq = remito.getEquipamiento();
-            if (eq instanceof Periferico || eq instanceof Accesorio) {
-                footerId = remito.getSucursal() ? remito.getSucursal().getNombreCompleto() : 'MOTOZUNI S.A.';
-            } else if (eq) {
-                footerId = eq.getCodigo();
-            }
-        } else if (remito instanceof RemitoTraslado) {
-            const eq = remito.getEquipamiento();
-            footerId = eq ? eq.getCodigo() : remito.getIdDocumento();
+    #renderFirmasYFooter(remito) {
+        const plantilla = remito.getPlantilla();
+        const flujo = plantilla.tipo_flujo || 'entrega';
+        const seccionesConCodigo = remito.getSeccionesResueltas().filter(s => s.tieneCodigo && s.codigo && s.codigo !== '—');
+        const sucNombre = remito.getSucursal() ? remito.getSucursal().getNombreCompleto() : 'MOTOZUNI S.A.';
+
+        let footerId = '';
+        if (flujo === 'baja') {
+            footerId = seccionesConCodigo.length ? `BAJA ${seccionesConCodigo[0].codigo}` : `BAJA ${plantilla.nombre}`;
+        } else if (seccionesConCodigo.length) {
+            footerId = seccionesConCodigo.map(s => s.codigo).join(' + ');
+        } else {
+            footerId = `${plantilla.nombre} — ${sucNombre}`;
         }
 
         const fechaFooter = (remito.getFecha() && remito.getFecha() !== '—') ? remito.getFecha() : '___/___/______';
 
-        if (remito instanceof RemitoTraslado) {
+        if (flujo === 'traslado') {
             return `
                 <div class="footer-text">
-                    Documento generado automáticamente — MOTOZUNI S.A. | ${footerId} | ${fechaFooter}
+                    Documento generado automáticamente — MOTOZUNI S.A. | ${escapeHtml(footerId)} | ${escapeHtml(fechaFooter)}
                 </div>
             `;
         }
@@ -523,304 +488,256 @@ class RemitoHtmlRenderService extends IRemitoRenderService {
                 </tr>
             </table>
             <div class="footer-text">
-                Documento generado automáticamente — MOTOZUNI S.A. | ${footerId} | ${fechaFooter}
+                Documento generado automáticamente — MOTOZUNI S.A. | ${escapeHtml(footerId)} | ${escapeHtml(fechaFooter)}
             </div>
         `;
     }
 
     /**
-     * Helper para renderizar tablas en pares de 2 columnas (etiqueta y valor)
-     * @param {Array<[string, string]>} pares 
-     * @returns {string}
+     * Renderiza tabla de 2 pares (4 columnas: label, valor, label, valor)
      */
-    renderTablaEspecificaciones(pares = []) {
+    renderTablaEspecificaciones(pares = [], opts = {}) {
+        const lista = [...pares];
+        if (lista.length % 2 !== 0) {
+            lista.push(['', '']);
+        }
         let rows = '';
-        for (let i = 0; i < pares.length; i += 2) {
-            const p1 = pares[i] || ['', ''];
-            const p2 = pares[i + 1] || ['', ''];
+        for (let i = 0; i < lista.length; i += 2) {
+            const p1 = lista[i] || ['', ''];
+            const p2 = lista[i + 1] || ['', ''];
+            const isLastPair1 = (i === lista.length - 1);
+            const isLastPair2 = (i + 1 === lista.length - 1);
+
+            const v1 = this.#formatCellVal(p1[1], opts.valoresYaHtml || (opts.ultimaFilaHtml && isLastPair1));
+            const v2 = this.#formatCellVal(p2[1], opts.valoresYaHtml || (opts.ultimaFilaHtml && isLastPair2));
+
             rows += `
                 <tr>
-                    <td class="lbl-col">${p1[0]}</td>
-                    <td class="val-col">${p1[1] || '—'}</td>
-                    <td class="lbl-col">${p2[0]}</td>
-                    <td class="val-col">${p2[1] || '—'}</td>
+                    <td class="lbl-col">${escapeHtml(p1[0])}</td>
+                    <td class="val-col">${v1}</td>
+                    <td class="lbl-col">${escapeHtml(p2[0])}</td>
+                    <td class="val-col">${v2}</td>
                 </tr>
             `;
         }
         return `<table class="remito-table">${rows}</table>`;
     }
+
+    #formatCellVal(val, yaEsHtml) {
+        if (val === '' || val === null || val === undefined) return '';
+        if (yaEsHtml) return String(val);
+        return escapeHtml(val);
+    }
 }
 
-// ── FACTORY PARA CREACIÓN POLIMÓRFICA DE REMITOS Y CAMPOS ────────────────────
+// ── FACTORY DINÁMICA DE FORMULARIOS Y REMITOS ────────────────────────────────
 
-/**
- * Factory que centraliza la definición de formularios y la instanciación de entidades.
- * Cumple con el Principio de Responsabilidad Única (SRP) y Abierto/Cerrado (OCP).
- */
 class RemitoFactory {
 
     /**
-     * Retorna los campos del formulario con su tipo de control (texto, area, codigo, fecha)
-     * @param {string} tipo 
-     * @param {string} todayFecha 
-     * @param {number|string} sucursalCodigo Código de la sucursal activa
-     * @returns {Array<{id: string, label: string, tipoControl: string, placeholder?: string, sigla?: string, def?: string}>}
+     * Genera la definición de controles del formulario lateral a partir de una PlantillaRemito
+     * @param {PlantillaRemito} plantilla
+     * @param {string} todayFecha
+     * @returns {Array<Object>}
      */
-    static getCamposFormulario(tipo, todayFecha, sucursalCodigo = 28) {
-        const suc = sucursalCodigo !== undefined && sucursalCodigo !== null ? sucursalCodigo : 28;
+    static getCamposFormulario(plantilla, todayFecha) {
+        if (!plantilla) return [];
+        const cfg = plantilla.config;
+        const flujo = plantilla.tipo_flujo || 'entrega';
+        const campos = [];
 
-        switch (tipo) {
-            case 'pc_monitor':
-                return [
-                    { id: 'cod_pc', label: 'Código PC', tipoControl: 'codigo', sigla: 'PC' },
-                    { id: 'marca_pc', label: 'Marca PC', tipoControl: 'texto', placeholder: 'Ejemplo: MSI' },
-                    { id: 'mod_pc', label: 'Modelo PC', tipoControl: 'texto', placeholder: 'Ejemplo: A520M-A PRO' },
-                    { id: 'cpu', label: 'CPU', tipoControl: 'texto', placeholder: 'Ejemplo: AMD RYZEN 5 3400G' },
-                    { id: 'ram', label: 'RAM (GB)', tipoControl: 'texto', placeholder: 'Ejemplo: 16' },
-                    { id: 'disco', label: 'Almacenamiento (GB)', tipoControl: 'texto', placeholder: 'Ejemplo: 240' },
-                    { id: 'so', label: 'S.O.', tipoControl: 'texto', placeholder: 'Ejemplo: Windows 10 Pro' },
-                    { id: 'adapt', label: 'Adaptador de red', tipoControl: 'texto', placeholder: 'Ejemplo: TP-Link TL-WN8200ND' },
-                    { id: 'comp', label: 'Componentes', tipoControl: 'texto', placeholder: 'Ejemplo: Teclado MK120, Mouse MK120' },
-                    { id: 'cod_mo', label: 'Código Monitor', tipoControl: 'codigo', sigla: 'MO' },
-                    { id: 'marca_mo', label: 'Marca Monitor', tipoControl: 'texto', placeholder: 'Ejemplo: Cooler Master' },
-                    { id: 'mod_mo', label: 'Modelo Monitor', tipoControl: 'texto', placeholder: 'Ejemplo: GA241' },
-                    { id: 'sn_mo', label: 'S/N Monitor', tipoControl: 'texto', placeholder: 'Ejemplo: 68606/66P700091' },
-                    { id: 'nombre', label: 'Asignado a', tipoControl: 'texto', placeholder: 'Ejemplo: Mario Araujo' },
-                    { id: 'area', label: 'Área / Equipo', tipoControl: 'area' },
-                    { id: 'email', label: 'Email', tipoControl: 'texto', placeholder: 'Ejemplo: usuario@motozuni.com.ar' },
-                    { id: 'fecha', label: 'Fecha', tipoControl: 'fecha', def: todayFecha, placeholder: `Ejemplo: ${todayFecha}` },
-                    { id: 'nota', label: 'Nota Adicional', tipoControl: 'texto', placeholder: 'Ejemplo: Incluye pad mouse, auricular, etc.' }
-                ];
-
-            case 'notebook':
-                return [
-                    { id: 'cod', label: 'Código NB', tipoControl: 'codigo', sigla: 'NB' },
-                    { id: 'marca', label: 'Marca', tipoControl: 'texto', placeholder: 'Ejemplo: Lenovo' },
-                    { id: 'modelo', label: 'Modelo', tipoControl: 'texto', placeholder: 'Ejemplo: ThinkPad E14' },
-                    { id: 'sn', label: 'N° Serie', tipoControl: 'texto', placeholder: 'Ejemplo: PF-2X89A1' },
-                    { id: 'cpu', label: 'CPU', tipoControl: 'texto', placeholder: 'Ejemplo: Intel Core i5-1135G7' },
-                    { id: 'ram', label: 'RAM (GB)', tipoControl: 'texto', placeholder: 'Ejemplo: 16' },
-                    { id: 'disco', label: 'Almacenamiento (GB)', tipoControl: 'texto', placeholder: 'Ejemplo: 256' },
-                    { id: 'so', label: 'S.O.', tipoControl: 'texto', placeholder: 'Ejemplo: Windows 10 Pro' },
-                    { id: 'cargador', label: 'Cargador', tipoControl: 'texto', placeholder: 'Ejemplo: Sí' },
-                    { id: 'nombre', label: 'Asignado a', tipoControl: 'texto', placeholder: 'Ejemplo: Mario Araujo' },
-                    { id: 'area', label: 'Área', tipoControl: 'area' },
-                    { id: 'email', label: 'Email', tipoControl: 'texto', placeholder: 'Ejemplo: usuario@motozuni.com.ar' },
-                    { id: 'fecha', label: 'Fecha', tipoControl: 'fecha', def: todayFecha, placeholder: `Ejemplo: ${todayFecha}` },
-                    { id: 'nota', label: 'Nota Adicional', tipoControl: 'texto', placeholder: 'Ejemplo: Incluye mochila protectora' }
-                ];
-
-            case 'celular':
-                return [
-                    { id: 'cod', label: 'Código CE', tipoControl: 'codigo', sigla: 'CE' },
-                    { id: 'marca', label: 'Marca', tipoControl: 'texto', placeholder: 'Ejemplo: Motorola' },
-                    { id: 'modelo', label: 'Modelo', tipoControl: 'texto', placeholder: 'Ejemplo: Moto G54' },
-                    { id: 'sn', label: 'N° Serie', tipoControl: 'texto', placeholder: 'Ejemplo: 68606/66P700091' },
-                    { id: 'imei', label: 'IMEI', tipoControl: 'texto', placeholder: 'Ejemplo: 869286072510600' },
-                    { id: 'cpu', label: 'CPU', tipoControl: 'texto', placeholder: 'Ejemplo: Snapdragon 685 4G Octa-core 2.80GHz' },
-                    { id: 'ram', label: 'RAM (GB)', tipoControl: 'texto', placeholder: 'Ejemplo: 8' },
-                    { id: 'disco', label: 'Almacenamiento (GB)', tipoControl: 'texto', placeholder: 'Ejemplo: 128' },
-                    { id: 'chip', label: 'Línea / Chip SIM', tipoControl: 'texto', placeholder: 'Ejemplo: 1123456789' },
-                    { id: 'iccid', label: 'ICCID', tipoControl: 'texto', placeholder: 'Ejemplo: 8954020000000000000' },
-                    { id: 'nombre', label: 'Asignado a', tipoControl: 'texto', placeholder: 'Ejemplo: Mario Araujo' },
-                    { id: 'area', label: 'Área', tipoControl: 'area' },
-                    { id: 'email', label: 'Email', tipoControl: 'texto', placeholder: 'Ejemplo: logistica@motozuni.com.ar' },
-                    { id: 'fecha', label: 'Fecha', tipoControl: 'fecha', def: todayFecha, placeholder: `Ejemplo: ${todayFecha}` }
-                ];
-
-            case 'traslado':
-                return [
-                    { id: 'nombre1', label: 'Nombre ENTREGA', tipoControl: 'texto', placeholder: 'Ejemplo: Juan Pérez' },
-                    { id: 'rol1', label: 'Área ENTREGA', tipoControl: 'area' },
-                    { id: 'nombre2', label: 'Nombre RECIBE', tipoControl: 'texto', placeholder: 'Ejemplo: Mario Araujo' },
-                    { id: 'rol2', label: 'Área RECIBE', tipoControl: 'area' },
-                    { id: 'tipo_disp', label: 'Tipo Dispositivo', tipoControl: 'texto', placeholder: 'Ejemplo: Notebook' },
-                    { id: 'cod', label: 'Código Dispositivo', tipoControl: 'codigo', sigla: 'NB' },
-                    { id: 'marca', label: 'Marca', tipoControl: 'texto', placeholder: 'Ejemplo: Lenovo' },
-                    { id: 'modelo', label: 'Modelo', tipoControl: 'texto', placeholder: 'Ejemplo: ThinkPad E14' },
-                    { id: 'sn', label: 'N° Serie', tipoControl: 'texto', placeholder: 'Ejemplo: N/A' },
-                    { id: 'fecha', label: 'Fecha', tipoControl: 'fecha', def: todayFecha, placeholder: `Ejemplo: ${todayFecha}` }
-                ];
-
-            case 'baja':
-                return [
-                    { id: 'cod', label: 'Código Dispositivo', tipoControl: 'codigo', sigla: 'PC' },
-                    { id: 'tipo_disp', label: 'Tipo', tipoControl: 'texto', placeholder: 'Ejemplo: Computadora' },
-                    { id: 'marca', label: 'Marca', tipoControl: 'texto', placeholder: 'Ejemplo: MSI' },
-                    { id: 'modelo', label: 'Modelo', tipoControl: 'texto', placeholder: 'Ejemplo: A520M-A PRO' },
-                    { id: 'sn', label: 'N° Serie', tipoControl: 'texto', placeholder: 'Ejemplo: N/A' },
-                    { id: 'nombre', label: 'Nombre Quien Devuelve', tipoControl: 'texto', placeholder: 'Ejemplo: Mario Araujo' },
-                    { id: 'area', label: 'Área', tipoControl: 'area' },
-                    { id: 'motivo', label: 'Motivo Baja', tipoControl: 'texto', placeholder: 'Ejemplo: Fin de vida útil / Reemplazo' },
-                    { id: 'fecha', label: 'Fecha', tipoControl: 'fecha', def: todayFecha, placeholder: `Ejemplo: ${todayFecha}` }
-                ];
-
-            case 'auricular':
-                return [
-                    { id: 'tipo_name', label: 'Tipo Producto', tipoControl: 'texto', placeholder: 'Ejemplo: AURICULAR H151' },
-                    { id: 'marca', label: 'Marca', tipoControl: 'texto', placeholder: 'Ejemplo: Logitech' },
-                    { id: 'modelo', label: 'Modelo', tipoControl: 'texto', placeholder: 'Ejemplo: H151' },
-                    { id: 'sn', label: 'N° Serie / Código', tipoControl: 'codigo', sigla: 'AU' },
-                    { id: 'nombre', label: 'Asignado a', tipoControl: 'texto', placeholder: 'Ejemplo: Mario Araujo' },
-                    { id: 'area', label: 'Área', tipoControl: 'area' },
-                    { id: 'fecha', label: 'Fecha', tipoControl: 'fecha', def: todayFecha, placeholder: `Ejemplo: ${todayFecha}` },
-                    { id: 'nota', label: 'Nota Adicional', tipoControl: 'texto', placeholder: 'Ejemplo: Conexión Jack 3.5mm con micrófono' }
-                ];
-
-            case 'mouse':
-                return [
-                    { id: 'tipo_name', label: 'Tipo Producto', tipoControl: 'texto', placeholder: 'Ejemplo: MOUSE' },
-                    { id: 'marca', label: 'Marca', tipoControl: 'texto', placeholder: 'Ejemplo: Logitech' },
-                    { id: 'modelo', label: 'Modelo', tipoControl: 'texto', placeholder: 'Ejemplo: M90' },
-                    { id: 'sn', label: 'N° Serie / Código', tipoControl: 'codigo', sigla: 'MS' },
-                    { id: 'nombre', label: 'Asignado a', tipoControl: 'texto', placeholder: 'Ejemplo: Mario Araujo' },
-                    { id: 'area', label: 'Área', tipoControl: 'area' },
-                    { id: 'fecha', label: 'Fecha', tipoControl: 'fecha', def: todayFecha, placeholder: `Ejemplo: ${todayFecha}` },
-                    { id: 'nota', label: 'Nota Adicional', tipoControl: 'texto', placeholder: 'Ejemplo: Conexión USB óptico' }
-                ];
-
-            case 'teclado':
-                return [
-                    { id: 'tipo_name', label: 'Tipo Producto', tipoControl: 'texto', placeholder: 'Ejemplo: TECLADO' },
-                    { id: 'marca', label: 'Marca', tipoControl: 'texto', placeholder: 'Ejemplo: Logitech' },
-                    { id: 'modelo', label: 'Modelo', tipoControl: 'texto', placeholder: 'Ejemplo: K120' },
-                    { id: 'sn', label: 'N° Serie / Código', tipoControl: 'codigo', sigla: 'TC' },
-                    { id: 'nombre', label: 'Asignado a', tipoControl: 'texto', placeholder: 'Ejemplo: Mario Araujo' },
-                    { id: 'area', label: 'Área', tipoControl: 'area' },
-                    { id: 'fecha', label: 'Fecha', tipoControl: 'fecha', def: todayFecha, placeholder: `Ejemplo: ${todayFecha}` },
-                    { id: 'nota', label: 'Nota Adicional', tipoControl: 'texto', placeholder: 'Ejemplo: Distribución español latinoamericano' }
-                ];
-
-            case 'wifi':
-                return [
-                    { id: 'tipo_name', label: 'Tipo Producto', tipoControl: 'texto', placeholder: 'Ejemplo: ADAPTADOR WI-FI' },
-                    { id: 'marca', label: 'Marca', tipoControl: 'texto', placeholder: 'Ejemplo: TP-Link' },
-                    { id: 'modelo', label: 'Modelo', tipoControl: 'texto', placeholder: 'Ejemplo: TL-WN8200ND' },
-                    { id: 'sn', label: 'N° Serie / Código', tipoControl: 'codigo', sigla: 'WF' },
-                    { id: 'nombre', label: 'Asignado a', tipoControl: 'texto', placeholder: 'Ejemplo: Mario Araujo' },
-                    { id: 'area', label: 'Área', tipoControl: 'area' },
-                    { id: 'fecha', label: 'Fecha', tipoControl: 'fecha', def: todayFecha, placeholder: `Ejemplo: ${todayFecha}` },
-                    { id: 'nota', label: 'Nota Adicional', tipoControl: 'texto', placeholder: 'Ejemplo: 300 Mbps High Power USB' }
-                ];
-
-            case 'monitor_solo':
-            default:
-                return [
-                    { id: 'tipo_name', label: 'Tipo Producto', tipoControl: 'texto', placeholder: 'Ejemplo: MONITOR' },
-                    { id: 'marca', label: 'Marca', tipoControl: 'texto', placeholder: 'Ejemplo: Cooler Master' },
-                    { id: 'modelo', label: 'Modelo', tipoControl: 'texto', placeholder: 'Ejemplo: GA241' },
-                    { id: 'sn', label: 'N° Serie / Código', tipoControl: 'codigo', sigla: 'MO' },
-                    { id: 'nombre', label: 'Asignado a', tipoControl: 'texto', placeholder: 'Ejemplo: Mario Araujo' },
-                    { id: 'area', label: 'Área', tipoControl: 'area' },
-                    { id: 'fecha', label: 'Fecha', tipoControl: 'fecha', def: todayFecha, placeholder: `Ejemplo: ${todayFecha}` },
-                    { id: 'nota', label: 'Nota Adicional', tipoControl: 'texto', placeholder: 'Ejemplo: Panel 23.8 pulgadas FHD 100Hz' }
-                ];
+        if (flujo === 'traslado') {
+            campos.push(
+                { id: 'nombre1', label: 'Nombre ENTREGA', tipoControl: 'texto', placeholder: 'Ejemplo: Juan Pérez' },
+                { id: 'rol1', label: 'Área ENTREGA', tipoControl: 'area' },
+                { id: 'nombre2', label: 'Nombre RECIBE', tipoControl: 'texto', placeholder: 'Ejemplo: Mario Araujo' },
+                { id: 'rol2', label: 'Área RECIBE', tipoControl: 'area' }
+            );
         }
+
+        // Campos de cada sección de la plantilla
+        (cfg.secciones || []).forEach((sec, idx) => {
+            if (cfg.secciones.length > 1) {
+                campos.push({
+                    id: `__sep_${sec.id}_${idx}`,
+                    label: sec.opcional ? `${sec.titulo} (Opcional)` : sec.titulo,
+                    tipoControl: 'separador'
+                });
+            }
+
+            if (sec.tieneCodigo) {
+                campos.push({
+                    id: sec.codigoFieldId || (idx === 0 ? 'cod' : `cod_${idx + 1}`),
+                    label: sec.codigoLabel || `Código ${sec.titulo}`,
+                    tipoControl: 'codigo',
+                    sigla: sec.sigla || plantilla.sigla_codigo || 'EQ',
+                    seccionIndex: idx
+                });
+            }
+
+            (sec.campos || []).forEach(c => {
+                if (c.tipoControl === 'fijo') return; // Los valores fijos van directo a la tabla
+                campos.push({
+                    id: c.id,
+                    label: c.labelForm || c.label,
+                    tipoControl: c.tipoControl || 'texto',
+                    placeholder: c.placeholder || '',
+                    def: c.valorDefecto || '',
+                    opciones: Array.isArray(c.opciones) ? c.opciones : []
+                });
+            });
+        });
+
+        // Campos de asignación / responsable / fecha
+        if (flujo === 'baja') {
+            campos.push(
+                { id: 'nombre', label: 'Nombre Quien Devuelve', tipoControl: 'texto', placeholder: 'Ejemplo: Mario Araujo' },
+                { id: 'area', label: 'Área', tipoControl: 'area' },
+                { id: 'fecha', label: 'Fecha', tipoControl: 'fecha', def: todayFecha, placeholder: `Ejemplo: ${todayFecha}` }
+            );
+        } else if (flujo === 'traslado') {
+            campos.push(
+                { id: 'fecha', label: 'Fecha', tipoControl: 'fecha', def: todayFecha, placeholder: `Ejemplo: ${todayFecha}` }
+            );
+        } else {
+            if (cfg.incluirDatosAsignacion) {
+                campos.push(
+                    { id: 'nombre', label: 'Asignado a', tipoControl: 'texto', placeholder: 'Ejemplo: Mario Araujo' },
+                    { id: 'area', label: 'Área / Equipo', tipoControl: 'area' }
+                );
+                if (cfg.mostrarEmailAsignacion) {
+                    campos.push({ id: 'email', label: 'Email', tipoControl: 'texto', placeholder: 'Ejemplo: usuario@motozuni.com.ar' });
+                }
+                campos.push({ id: 'fecha', label: 'Fecha', tipoControl: 'fecha', def: todayFecha, placeholder: `Ejemplo: ${todayFecha}` });
+            } else {
+                campos.push({ id: 'fecha', label: 'Fecha', tipoControl: 'fecha', def: todayFecha, placeholder: `Ejemplo: ${todayFecha}` });
+            }
+
+            if (cfg.incluirNotaAdicional) {
+                campos.push({
+                    id: 'nota',
+                    label: 'Nota Adicional',
+                    tipoControl: 'texto',
+                    placeholder: cfg.notaPlaceholder || 'Ejemplo: Observaciones adicionales...'
+                });
+            }
+        }
+
+        return campos;
     }
 
     /**
-     * Instancia el objeto Remito apropiado según el tipo y los valores del formulario
-     * @param {string} tipo 
-     * @param {Function} v Función helper para obtener valores por ID
-     * @param {Sucursal} sucursal 
-     * @returns {Remito}
+     * Construye un RemitoDinamico a partir de la plantilla y los valores del formulario
+     * @param {PlantillaRemito} plantilla
+     * @param {Function} getVal Función (id) => string ('' si vacío)
+     * @param {Sucursal} sucursal
+     * @returns {RemitoDinamico}
      */
-    static crearRemito(tipo, v, sucursal) {
-        const fecha = v('fecha');
+    static crearRemito(plantilla, getVal, sucursal) {
+        const cfg = plantilla.config;
+        const flujo = plantilla.tipo_flujo || 'entrega';
+        const valores = {};
+        const seccionesResueltas = [];
 
-        switch (tipo) {
-            case 'pc_monitor': {
-                const pc = new Computadora(
-                    v('cod_pc'), v('marca_pc'), v('mod_pc'), 'N/A',
-                    v('cpu'), v('ram'), v('disco'), v('so'), v('adapt'), v('comp')
-                );
-                const mo = new Monitor(v('cod_mo'), v('marca_mo'), v('mod_mo'), v('sn_mo'));
-                const remito = new RemitoPcMonitor(
-                    `${pc.getCodigo()} + ${mo.getCodigo()}`,
-                    fecha,
-                    sucursal,
-                    pc,
-                    mo
-                );
-                remito.setAsignadoA(v('nombre'));
-                remito.setAreaEquipo(v('area'));
-                remito.setEmail(v('email'));
-                remito.setNotaAdicional(v('nota'));
-                return remito;
+        (cfg.secciones || []).forEach((sec, idx) => {
+            const codigoFieldId = sec.codigoFieldId || (idx === 0 ? 'cod' : `cod_${idx + 1}`);
+            const codigoVal = sec.tieneCodigo ? (getVal(codigoFieldId) || '—') : '';
+            if (sec.tieneCodigo) valores[codigoFieldId] = codigoVal;
+
+            const pares = [];
+            if (sec.tieneCodigo) {
+                pares.push(['Código', codigoVal]);
             }
 
-            case 'notebook': {
-                const nb = new Notebook(
-                    v('cod'), v('marca'), v('modelo'), v('sn'),
-                    v('cpu'), v('ram'), v('disco'), v('so'), v('cargador')
-                );
-                nb.setNotaAdicional(v('nota'));
-                const remito = new RemitoEquipamientoEstandar(nb.getCodigo(), fecha, sucursal, nb);
-                remito.setAsignadoA(v('nombre'));
-                remito.setAreaEquipo(v('area'));
-                remito.setEmail(v('email'));
-                remito.setNotaAdicional(v('nota'));
-                return remito;
-            }
+            let tieneDatosUsuario = false;
 
-            case 'celular': {
-                const chip = v('chip');
-                let lineaSim = null;
-                if (chip && chip !== '—' && chip !== '') {
-                    lineaSim = new LineaSIM('Claro', chip, v('iccid'), 'Asignado');
+            (sec.campos || []).forEach(c => {
+                let rawVal = '';
+                if (c.tipoControl === 'fijo') {
+                    rawVal = c.valorDefecto || '—';
+                } else {
+                    rawVal = getVal(c.id);
+                    if (rawVal && rawVal !== '—') {
+                        tieneDatosUsuario = true;
+                    }
+                    if (!rawVal && c.fallbackTabla) {
+                        rawVal = c.fallbackTabla;
+                    }
                 }
-                const cel = new Celular(
-                    v('cod'), v('marca'), v('modelo'), v('sn'),
-                    v('imei'), v('cpu'), v('ram'), v('disco'), lineaSim
-                );
-                const remito = new RemitoEquipamientoEstandar(cel.getCodigo(), fecha, sucursal, cel);
-                remito.setAsignadoA(v('nombre'));
-                remito.setAreaEquipo(v('area'));
-                remito.setEmail(v('email'));
-                return remito;
-            }
+                valores[c.id] = rawVal || '—';
+                if (c.enTabla !== false) {
+                    pares.push([c.label, rawVal || '—']);
+                }
+            });
 
-            case 'traslado': {
-                const equip = new Periferico(
-                    v('cod'), v('marca'), v('modelo'), v('sn'),
-                    v('tipo_disp') || 'Dispositivo', ''
-                );
-                const remito = new RemitoTraslado(v('cod'), fecha, sucursal, equip);
-                remito.setPersonaEntrega(v('nombre1'));
-                remito.setAreaEntrega(v('rol1'));
-                remito.setPersonaRecibe(v('nombre2'));
-                remito.setAreaRecibe(v('rol2'));
-                return remito;
-            }
+            seccionesResueltas.push({
+                id: sec.id,
+                titulo: sec.titulo,
+                tieneCodigo: Boolean(sec.tieneCodigo),
+                codigoFieldId,
+                codigo: codigoVal,
+                opcional: Boolean(sec.opcional),
+                tieneDatosUsuario,
+                pares
+            });
+        });
 
-            case 'baja': {
-                const equip = new Periferico(
-                    v('cod'), v('marca'), v('modelo'), v('sn'),
-                    v('tipo_disp') || 'Computadora', ''
-                );
-                const remito = new RemitoBaja(v('cod'), fecha, sucursal, equip, v('motivo'));
-                remito.setPersonaDevuelve(v('nombre'));
-                remito.setAreaEquipo(v('area'));
-                return remito;
-            }
+        const codigosActivos = seccionesResueltas.filter(s => s.tieneCodigo && s.codigo && s.codigo !== '—').map(s => s.codigo);
+        const idDocumento = codigosActivos.length ? codigosActivos.join(' + ') : plantilla.nombre;
+        const fecha = getVal('fecha');
 
-            case 'auricular':
-            case 'mouse':
-            case 'teclado':
-            case 'wifi':
-            case 'monitor_solo':
-            default: {
-                const tName = v('tipo_name') || tipo.toUpperCase();
-                const perif = new Periferico(
-                    v('sn') !== '—' && v('sn') !== '' ? v('sn') : tName,
-                    v('marca'), v('modelo'), v('sn'),
-                    tName, v('nota')
-                );
-                const remito = new RemitoEquipamientoEstandar(tName, fecha, sucursal, perif);
-                remito.setAsignadoA(v('nombre'));
-                remito.setAreaEquipo(v('area'));
-                return remito;
-            }
+        const remito = new RemitoDinamico(idDocumento, fecha, sucursal, plantilla, valores, seccionesResueltas);
+
+        if (flujo === 'traslado') {
+            remito.setPersonaEntrega(getVal('nombre1'));
+            remito.setAreaEntrega(getVal('rol1') || '—');
+            remito.setPersonaRecibe(getVal('nombre2'));
+            remito.setAreaRecibe(getVal('rol2') || '—');
+        } else if (flujo === 'baja') {
+            remito.setPersonaDevuelve(getVal('nombre'));
+            remito.setAreaEquipo(getVal('area') || '—');
+        } else {
+            remito.setAsignadoA(getVal('nombre'));
+            remito.setAreaEquipo(getVal('area') || '—');
+            remito.setEmail(getVal('email') || '—');
+            remito.setNotaAdicional(getVal('nota'));
         }
+
+        return remito;
+    }
+
+    /**
+     * Construye un EquipamientoDinamico para la sección "Componentes Adicionales"
+     */
+    static crearComponenteAdicional(plantilla, codigoVal, camposValores, notaVal) {
+        const sec = plantilla.getSeccionPrincipal();
+        const tieneCodigo = Boolean(plantilla.tiene_codigo || (sec && sec.tieneCodigo));
+        const pares = [];
+
+        if (tieneCodigo) {
+            pares.push(['Código', codigoVal || '—']);
+        }
+
+        if (sec && Array.isArray(sec.campos)) {
+            sec.campos.forEach(c => {
+                if (c.enTabla === false) return;
+                let val = '';
+                if (c.tipoControl === 'fijo') {
+                    val = c.valorDefecto || '—';
+                } else {
+                    val = (camposValores && camposValores[c.id]) ? String(camposValores[c.id]).trim() : '';
+                    if (!val && c.fallbackTabla) val = c.fallbackTabla;
+                }
+                pares.push([c.label, val || '—']);
+            });
+        }
+
+        return new EquipamientoDinamico({
+            codigo: tieneCodigo ? (codigoVal || '—') : '',
+            tieneCodigo,
+            tipoDescripcion: (sec && sec.titulo) ? sec.titulo : plantilla.nombre,
+            especificaciones: pares,
+            notaAdicional: notaVal || ''
+        });
     }
 }

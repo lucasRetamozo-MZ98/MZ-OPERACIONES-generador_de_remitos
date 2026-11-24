@@ -609,3 +609,252 @@ class RemitoBaja extends Remito {
         return "Baja";
     }
 }
+
+// ── ENTIDADES DE CATÁLOGOS Y PLANTILLAS DINÁMICAS ────────────────────────────
+
+/**
+ * Sector o Área organizacional
+ */
+class Sector {
+    #id;
+    #nombre;
+    #orden;
+
+    constructor(id, nombre, orden = 0) {
+        this.#id = String(id || '').trim();
+        this.#nombre = String(nombre || '').trim();
+        this.#orden = Number(orden) || 0;
+    }
+
+    getId() { return this.#id; }
+    getNombre() { return this.#nombre; }
+    getOrden() { return this.#orden; }
+    get id() { return this.#id; }
+    get nombre() { return this.#nombre; }
+    get orden() { return this.#orden; }
+
+    toJSON() {
+        return {
+            id: this.#id,
+            nombre: this.#nombre,
+            orden: this.#orden
+        };
+    }
+}
+
+/**
+ * Tipo de componente configurable (Computadora, Monitor, Chip SIM, etc.)
+ */
+class TipoComponente {
+    #id;
+    #nombre;
+    #tieneCodigo;
+    #sigla;
+    #esSistema;
+
+    constructor(id, nombre, tieneCodigo = true, sigla = '', esSistema = false) {
+        this.#id = String(id || '').trim();
+        this.#nombre = String(nombre || '').trim();
+        this.#tieneCodigo = Boolean(tieneCodigo);
+        this.#sigla = this.#tieneCodigo ? String(sigla || '').trim().toUpperCase() : '';
+        this.#esSistema = Boolean(esSistema);
+    }
+
+    getId() { return this.#id; }
+    getNombre() { return this.#nombre; }
+    tieneCodigo() { return this.#tieneCodigo; }
+    getSigla() { return this.#sigla; }
+    esSistema() { return this.#esSistema; }
+
+    get id() { return this.#id; }
+    get nombre() { return this.#nombre; }
+    get tiene_codigo() { return this.#tieneCodigo; }
+    get sigla() { return this.#sigla; }
+    get es_sistema() { return this.#esSistema; }
+
+    toJSON() {
+        return {
+            id: this.#id,
+            nombre: this.#nombre,
+            tiene_codigo: this.#tieneCodigo,
+            sigla: this.#sigla,
+            es_sistema: this.#esSistema
+        };
+    }
+}
+
+/**
+ * Plantilla configurable de Remito / Componente Adicional
+ */
+class PlantillaRemito {
+    constructor(data = {}) {
+        this.id = String(data.id || '').trim();
+        this.nombre = String(data.nombre || '').trim();
+        this.orden = Number(data.orden ?? 100);
+        this.tipo_componente_id = data.tipo_componente_id || null;
+        this.tipo_flujo = data.tipo_flujo || 'entrega'; // 'entrega' | 'traslado' | 'baja'
+        this.usar_como_remito = data.usar_como_remito !== undefined ? Boolean(data.usar_como_remito) : true;
+        this.usar_como_adicional = Boolean(data.usar_como_adicional);
+        this.tiene_codigo = data.tiene_codigo !== undefined ? Boolean(data.tiene_codigo) : true;
+        this.sigla_codigo = this.tiene_codigo ? String(data.sigla_codigo || '').trim().toUpperCase() : '';
+        this.es_sistema = Boolean(data.es_sistema);
+        this.config = this.#normalizarConfig(data.config || {});
+    }
+
+    #normalizarConfig(cfg) {
+        const secciones = Array.isArray(cfg.secciones)
+            ? cfg.secciones.map((sec, idx) => ({
+                id: sec.id || `sec_${idx + 1}`,
+                titulo: sec.titulo || (this.nombre ? this.nombre.toUpperCase() : 'DISPOSITIVO'),
+                tieneCodigo: sec.tieneCodigo !== undefined ? Boolean(sec.tieneCodigo) : (idx === 0 ? this.tiene_codigo : false),
+                sigla: String(sec.sigla ?? (idx === 0 ? this.sigla_codigo : '')).trim().toUpperCase(),
+                codigoFieldId: sec.codigoFieldId || (idx === 0 ? 'cod' : `cod_${idx + 1}`),
+                codigoLabel: sec.codigoLabel || 'Código',
+                opcional: Boolean(sec.opcional),
+                campos: Array.isArray(sec.campos)
+                    ? sec.campos.map((c, cIdx) => ({
+                        id: c.id || `campo_${idx}_${cIdx}`,
+                        label: c.label || 'Campo',
+                        labelForm: c.labelForm || '',
+                        tipoControl: c.tipoControl || 'texto', // 'texto' | 'textarea' | 'select' | 'fecha' | 'area' | 'fijo'
+                        placeholder: c.placeholder || '',
+                        valorDefecto: c.valorDefecto ?? '',
+                        fallbackTabla: c.fallbackTabla ?? '',
+                        opciones: Array.isArray(c.opciones) ? c.opciones : [],
+                        enTabla: c.enTabla !== undefined ? Boolean(c.enTabla) : true
+                    }))
+                    : []
+            }))
+            : [];
+
+        return {
+            bannerTitulo: cfg.bannerTitulo || (
+                this.tipo_flujo === 'traslado'
+                    ? 'REMITO DE TRASLADO DE DISPOSITIVO'
+                    : this.tipo_flujo === 'baja'
+                        ? 'REMITO DE DEVOLUCIÓN / BAJA DE DISPOSITIVO'
+                        : 'RECIBO DE ENTREGA DE DISPOSITIVOS'
+            ),
+            colorTema: cfg.colorTema || (
+                this.tipo_flujo === 'traslado' ? 'naranja'
+                    : this.tipo_flujo === 'baja' ? 'rojo' : 'azul'
+            ),
+            subtituloHeader: cfg.subtituloHeader || '',
+            prefijoPdf: cfg.prefijoPdf || (
+                this.tipo_flujo === 'traslado' ? 'Recibo_Traslado'
+                    : this.tipo_flujo === 'baja' ? 'Recibo_Baja' : 'Recibo'
+            ),
+            sincronizarCodigos: Boolean(cfg.sincronizarCodigos),
+            incluirDatosAsignacion: cfg.incluirDatosAsignacion !== undefined
+                ? Boolean(cfg.incluirDatosAsignacion)
+                : (this.tipo_flujo === 'entrega'),
+            mostrarEmailAsignacion: cfg.mostrarEmailAsignacion !== undefined
+                ? Boolean(cfg.mostrarEmailAsignacion)
+                : false,
+            incluirNotaAdicional: cfg.incluirNotaAdicional !== undefined
+                ? Boolean(cfg.incluirNotaAdicional)
+                : (this.tipo_flujo === 'entrega'),
+            notaPlaceholder: cfg.notaPlaceholder || 'Ejemplo: Observaciones adicionales...',
+            textoConformidad: cfg.textoConformidad ?? '',
+            secciones
+        };
+    }
+
+    getSeccionPrincipal() {
+        return this.config.secciones[0] || null;
+    }
+
+    toJSON() {
+        return {
+            id: this.id,
+            nombre: this.nombre,
+            orden: this.orden,
+            tipo_componente_id: this.tipo_componente_id,
+            tipo_flujo: this.tipo_flujo,
+            usar_como_remito: this.usar_como_remito,
+            usar_como_adicional: this.usar_como_adicional,
+            tiene_codigo: this.tiene_codigo,
+            sigla_codigo: this.sigla_codigo,
+            es_sistema: this.es_sistema,
+            config: JSON.parse(JSON.stringify(this.config))
+        };
+    }
+}
+
+/**
+ * Equipamiento dinámico definido por una plantilla (puede tener o no código,
+ * y sus especificaciones provienen directamente de la definición de la plantilla).
+ */
+class EquipamientoDinamico extends Equipamiento {
+    #tipoDescripcion;
+    #tieneCodigo;
+    #especificaciones;
+
+    constructor({ codigo = '', tieneCodigo = true, tipoDescripcion = 'Componente', especificaciones = [], notaAdicional = '' } = {}) {
+        super(tieneCodigo ? (codigo || '—') : '', '—', '—', '—', notaAdicional);
+        this.#tipoDescripcion = tipoDescripcion || 'Componente';
+        this.#tieneCodigo = Boolean(tieneCodigo);
+        this.#especificaciones = Array.isArray(especificaciones) ? especificaciones : [];
+    }
+
+    tieneCodigo() {
+        return this.#tieneCodigo;
+    }
+
+    getTipoDescripcion() {
+        return this.#tipoDescripcion;
+    }
+
+    getEspecificaciones() {
+        return this.#especificaciones.map(par => [par[0], par[1]]);
+    }
+}
+
+/**
+ * Remito dinámico impulsado por una PlantillaRemito almacenada en la base de datos.
+ */
+class RemitoDinamico extends Remito {
+    #plantilla;
+    #valores;
+    #seccionesResueltas;
+    #personaEntrega;
+    #areaEntrega;
+    #personaRecibe;
+    #areaRecibe;
+    #personaDevuelve;
+
+    constructor(idDocumento, fecha, sucursal, plantilla, valores = {}, seccionesResueltas = []) {
+        super(idDocumento, fecha, sucursal);
+        this.#plantilla = plantilla;
+        this.#valores = { ...valores };
+        this.#seccionesResueltas = Array.isArray(seccionesResueltas) ? seccionesResueltas : [];
+        this.#personaEntrega = '';
+        this.#areaEntrega = '—';
+        this.#personaRecibe = '';
+        this.#areaRecibe = '—';
+        this.#personaDevuelve = '';
+    }
+
+    getPlantilla() { return this.#plantilla; }
+    getValores() { return { ...this.#valores }; }
+    getValor(campoId, fallback = '—') {
+        const val = this.#valores[campoId];
+        return (val !== undefined && val !== null && String(val).trim() !== '') ? val : fallback;
+    }
+    getSeccionesResueltas() { return [...this.#seccionesResueltas]; }
+
+    getPersonaEntrega() { return this.#personaEntrega; }
+    setPersonaEntrega(p) { this.#personaEntrega = p || ''; }
+    getAreaEntrega() { return this.#areaEntrega; }
+    setAreaEntrega(a) { this.#areaEntrega = a || '—'; }
+    getPersonaRecibe() { return this.#personaRecibe; }
+    setPersonaRecibe(p) { this.#personaRecibe = p || ''; }
+    getAreaRecibe() { return this.#areaRecibe; }
+    setAreaRecibe(a) { this.#areaRecibe = a || '—'; }
+    getPersonaDevuelve() { return this.#personaDevuelve; }
+    setPersonaDevuelve(p) { this.#personaDevuelve = p || ''; }
+
+    getTipoRemito() {
+        return this.#plantilla ? this.#plantilla.nombre : 'Remito';
+    }
+}
