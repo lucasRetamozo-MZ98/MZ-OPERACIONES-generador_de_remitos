@@ -52,6 +52,19 @@ CREATE TABLE IF NOT EXISTS public.plantillas (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Índice sobre FK
+CREATE INDEX IF NOT EXISTS idx_plantillas_tipo_componente_id
+    ON public.plantillas (tipo_componente_id);
+
+-- Permisos explícitos para Data API
+GRANT USAGE ON SCHEMA public TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE
+    public.sucursales,
+    public.sectores,
+    public.tipos_componente,
+    public.plantillas
+TO anon, authenticated;
+
 -- ============================================================================
 -- POLÍTICAS DE SEGURIDAD (RLS)
 -- Habilita acceso de lectura/escritura desde la app web con la Anon Key.

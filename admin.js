@@ -1109,9 +1109,9 @@ class AdminPanelController {
 
         let statusBadge = `<span class="db-pill db-pill-local">🟡 Modo Local (guardado en este navegador)</span>`;
         if (estado.modo === 'supabase') {
-            statusBadge = `<span class="db-pill db-pill-ok">🟢 Conectado a Supabase (sincronizado en la nube)</span>`;
+            statusBadge = `<span class="db-pill db-pill-ok">🟢 Conectado a Supabase (exclusivo en la nube — sin guardado local)</span>`;
         } else if (estado.modo === 'error_fallback') {
-            statusBadge = `<span class="db-pill db-pill-err">🔴 Error de conexión — trabajando en respaldo local (${escapeHtml(estado.ultimoError)})</span>`;
+            statusBadge = `<span class="db-pill db-pill-err">🔴 Error de conexión con Supabase (${escapeHtml(estado.ultimoError)})</span>`;
         }
 
         return `

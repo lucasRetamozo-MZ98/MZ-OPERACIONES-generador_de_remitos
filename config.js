@@ -1,13 +1,11 @@
 /**
  * CONFIGURACIÓN DE SUPABASE — MOTOZUNI S.A.
  *
- * Opcional: si querés dejar las credenciales precargadas para todo el equipo
- * (por ejemplo, al publicar en GitHub Pages o red interna), completá `url` y `anonKey`.
- * También podés configurarlas desde la interfaz: botón "Gestionar" → pestaña "Base de Datos".
- *
- * IMPORTANTE: usar únicamente la clave pública (anon / publishable key), NUNCA la service_role key.
+ * Proyecto conectado: mz-generador-remitos (sa-east-1)
+ * Clave pública publishable (segura para frontend; el acceso se controla vía RLS en Postgres).
+ * NUNCA colocar aquí la service_role / secret key.
  */
 window.SUPABASE_DEFAULT_CONFIG = {
-    url: '',
-    anonKey: ''
+    url: 'https://hxnoncmsffqzkvxoosit.supabase.co',
+    anonKey: 'sb_publishable_PcE0Aw-v6KwOIlfHquxR1A_2Sjl0dfi'
 };

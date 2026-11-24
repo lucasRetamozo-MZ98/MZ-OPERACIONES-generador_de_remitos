@@ -94,10 +94,10 @@ function actualizarIndicadorBD() {
     const estado = dataStore.getEstadoConexion();
     if (estado.modo === 'supabase') {
         pill.className = 'header-db-pill pill-supa';
-        pill.textContent = '🟢 Supabase conectado';
+        pill.textContent = '🟢 Supabase conectado (nube)';
     } else if (estado.modo === 'error_fallback') {
         pill.className = 'header-db-pill pill-err';
-        pill.textContent = '🔴 Sin conexión (modo local)';
+        pill.textContent = '🔴 Error de conexión a Supabase';
     } else {
         pill.className = 'header-db-pill pill-local';
         pill.textContent = '🟡 Base local · Conectar Supabase';

@@ -504,29 +504,28 @@ class DataStoreService {
         if (this.#repoSupabase) {
             try {
                 let remote = await this.#repoSupabase.cargarTodo();
-                // Si Supabase está recién creado sin plantillas, subimos las iniciales automáticamente
-                const localSnap = await this.#repoLocal.cargarTodo();
+                // Si la BD remota estuviera vacía por primera vez, sube la semilla inicial una única vez
                 const faltaSemilla = !remote.plantillas.length || !remote.sucursales.length || !remote.sectores.length || !remote.tipos_componente.length;
                 if (faltaSemilla) {
+                    const defaults = this.#repoLocal.crearSnapshotDefaults();
                     const merged = {
-                        sucursales: remote.sucursales.length ? remote.sucursales : localSnap.sucursales,
-                        sectores: remote.sectores.length ? remote.sectores : localSnap.sectores,
-                        tipos_componente: remote.tipos_componente.length ? remote.tipos_componente : localSnap.tipos_componente,
-                        plantillas: remote.plantillas.length ? remote.plantillas : localSnap.plantillas
+                        sucursales: remote.sucursales.length ? remote.sucursales : defaults.sucursales,
+                        sectores: remote.sectores.length ? remote.sectores : defaults.sectores,
+                        tipos_componente: remote.tipos_componente.length ? remote.tipos_componente : defaults.tipos_componente,
+                        plantillas: remote.plantillas.length ? remote.plantillas : defaults.plantillas
                     };
                     await this.#repoSupabase.guardarTodo(merged);
                     remote = await this.#repoSupabase.cargarTodo();
                 }
-                await this.#repoLocal.guardarTodo(remote);
+                // Modo nube exclusivo: no conservar copia local de datos ni plantillas en localStorage
+                try { localStorage.removeItem(RepositorioDatosLocal.STORAGE_KEY); } catch { /* ignore */ }
                 this.#hidratarCache(remote);
                 this.#modo = 'supabase';
                 this.#notificar();
                 return this.getEstadoConexion();
             } catch (err) {
-                console.warn('Fallo conexión a Supabase, usando respaldo local:', err);
+                console.error('Error conectando a Supabase:', err);
                 this.#ultimoError = err.message || String(err);
-                const local = await this.#repoLocal.cargarTodo();
-                this.#hidratarCache(local);
                 this.#modo = 'error_fallback';
                 this.#notificar();
                 return this.getEstadoConexion();
@@ -550,13 +549,15 @@ class DataStoreService {
             this.#repoSupabase = null;
             this.#modo = 'local';
             this.#ultimoError = null;
+            const local = await this.#repoLocal.cargarTodo();
+            this.#hidratarCache(local);
             this.#notificar();
             return { ok: true, mensaje: 'Desconectado de Supabase. Trabajando en modo local.' };
         }
 
         const testClient = new SupabaseRestClient(cleanUrl, cleanKey);
         if (!testClient.isConfigured()) {
-            throw new Error('Ingresá una URL válida (https://...supabase.co) y la Anon Key.');
+            throw new Error('Ingresá una URL válida (https://...supabase.co) y la clave pública.');
         }
 
         await testClient.testConnection();
@@ -565,17 +566,34 @@ class DataStoreService {
         this.#supabaseClient = testClient;
         this.#repoSupabase = new RepositorioDatosSupabase(testClient);
         await this.inicializar();
-        return { ok: true, mensaje: 'Conectado correctamente a Supabase.' };
+        return { ok: true, mensaje: 'Conectado correctamente a Supabase (modo nube exclusivo).' };
     }
 
     async sincronizarLocalASupabase() {
         if (!this.#repoSupabase) {
-            throw new Error('Primero configurá la URL y Anon Key de Supabase.');
+            throw new Error('Primero configurá la URL y clave pública de Supabase.');
         }
         const snap = this.exportarSnapshot();
         await this.#repoSupabase.guardarTodo(snap);
         await this.inicializar();
         return true;
+    }
+
+    #getRepoActivo() {
+        if (this.#repoSupabase) {
+            if (this.#modo !== 'supabase') {
+                throw new Error(`Sin conexión con Supabase (${this.#ultimoError || 'revisá tu conexión a internet'}). No se guardaron cambios localmente.`);
+            }
+            return this.#repoSupabase;
+        }
+        return this.#repoLocal;
+    }
+
+    async #recargarDesdeRepoActivo() {
+        const repo = this.#getRepoActivo();
+        const snap = await repo.cargarTodo();
+        this.#hidratarCache(snap);
+        this.#notificar();
     }
 
     async importarSnapshot(snapshot) {
@@ -588,30 +606,23 @@ class DataStoreService {
             tipos_componente: snapshot.tipos_componente || [],
             plantillas: snapshot.plantillas || []
         };
-        await this.#repoLocal.guardarTodo(limpio);
-        if (this.#repoSupabase && this.#modo === 'supabase') {
-            await this.#repoSupabase.guardarTodo(limpio);
-        }
-        this.#hidratarCache(limpio);
-        this.#notificar();
+        const repo = this.#getRepoActivo();
+        await repo.guardarTodo(limpio);
+        await this.#recargarDesdeRepoActivo();
     }
 
     async restaurarDefaults(soloPlantillas = false) {
         const defaults = this.#repoLocal.crearSnapshotDefaults();
-        const actual = this.exportarSnapshot();
-        const nuevo = soloPlantillas
-            ? { ...actual, plantillas: defaults.plantillas }
-            : defaults;
-
-        await this.#repoLocal.guardarTodo(nuevo);
-        if (this.#repoSupabase && this.#modo === 'supabase') {
-            await this.#repoSupabase.guardarTodo(nuevo);
+        const repo = this.#getRepoActivo();
+        if (soloPlantillas) {
+            await repo.guardarTodo({ plantillas: defaults.plantillas });
+        } else {
+            await repo.guardarTodo(defaults);
         }
-        this.#hidratarCache(nuevo);
-        this.#notificar();
+        await this.#recargarDesdeRepoActivo();
     }
 
-    // ── Consultas síncronas desde caché ─────────────────────────────────────
+    // ── Consultas síncronas desde caché en memoria (cargada desde Supabase) ─
 
     obtenerSucursales() { return [...this.#sucursales]; }
     buscarSucursalPorCodigo(codigo) {
@@ -630,7 +641,7 @@ class DataStoreService {
     obtenerPlantillasAdicional() { return this.#plantillas.filter(p => p.usar_como_adicional); }
     buscarPlantillaPorId(id) { return this.#plantillas.find(p => p.id === id) || null; }
 
-    // ── Operaciones CRUD (escriben en Supabase si está activo + espejo local) ─
+    // ── Operaciones CRUD (exclusivas en Supabase cuando está conectado) ─────
 
     async guardarSucursal(id, nombre) {
         const numId = Number(id);
@@ -638,27 +649,18 @@ class DataStoreService {
         if (Number.isNaN(numId) || numId < 0) throw new Error('El código de sucursal debe ser un número válido (0 o mayor).');
         if (!cleanNombre) throw new Error('El nombre de la sucursal es obligatorio.');
 
-        const rec = { id: numId, nombre: cleanNombre };
-        if (this.#repoSupabase && this.#modo === 'supabase') {
-            await this.#repoSupabase.guardarSucursal(rec);
-        }
-        await this.#repoLocal.guardarSucursal(rec);
-        const snap = await this.#repoLocal.cargarTodo();
-        this.#hidratarCache(snap);
-        this.#notificar();
+        const repo = this.#getRepoActivo();
+        await repo.guardarSucursal({ id: numId, nombre: cleanNombre });
+        await this.#recargarDesdeRepoActivo();
     }
 
     async eliminarSucursal(id) {
         if (this.#sucursales.length <= 1) {
             throw new Error('Debe existir al menos una sucursal.');
         }
-        if (this.#repoSupabase && this.#modo === 'supabase') {
-            await this.#repoSupabase.eliminarSucursal(id);
-        }
-        await this.#repoLocal.eliminarSucursal(id);
-        const snap = await this.#repoLocal.cargarTodo();
-        this.#hidratarCache(snap);
-        this.#notificar();
+        const repo = this.#getRepoActivo();
+        await repo.eliminarSucursal(id);
+        await this.#recargarDesdeRepoActivo();
     }
 
     async guardarSector(sectorData) {
@@ -667,27 +669,18 @@ class DataStoreService {
         const id = sectorData.id ? String(sectorData.id).trim() : generarSlug(nombre, 'sector');
         const orden = Number(sectorData.orden ?? (this.#sectores.length + 1));
 
-        const rec = { id, nombre, orden };
-        if (this.#repoSupabase && this.#modo === 'supabase') {
-            await this.#repoSupabase.guardarSector(rec);
-        }
-        await this.#repoLocal.guardarSector(rec);
-        const snap = await this.#repoLocal.cargarTodo();
-        this.#hidratarCache(snap);
-        this.#notificar();
+        const repo = this.#getRepoActivo();
+        await repo.guardarSector({ id, nombre, orden });
+        await this.#recargarDesdeRepoActivo();
     }
 
     async eliminarSector(id) {
         if (this.#sectores.length <= 1) {
             throw new Error('Debe existir al menos un sector.');
         }
-        if (this.#repoSupabase && this.#modo === 'supabase') {
-            await this.#repoSupabase.eliminarSector(id);
-        }
-        await this.#repoLocal.eliminarSector(id);
-        const snap = await this.#repoLocal.cargarTodo();
-        this.#hidratarCache(snap);
-        this.#notificar();
+        const repo = this.#getRepoActivo();
+        await repo.eliminarSector(id);
+        await this.#recargarDesdeRepoActivo();
     }
 
     async guardarTipoComponente(tipoData) {
@@ -701,24 +694,16 @@ class DataStoreService {
         }
 
         const rec = { id, nombre, tiene_codigo: tieneCodigo, sigla, es_sistema: Boolean(tipoData.es_sistema) };
-        if (this.#repoSupabase && this.#modo === 'supabase') {
-            await this.#repoSupabase.guardarTipoComponente(rec);
-        }
-        await this.#repoLocal.guardarTipoComponente(rec);
-        const snap = await this.#repoLocal.cargarTodo();
-        this.#hidratarCache(snap);
-        this.#notificar();
+        const repo = this.#getRepoActivo();
+        await repo.guardarTipoComponente(rec);
+        await this.#recargarDesdeRepoActivo();
         return rec;
     }
 
     async eliminarTipoComponente(id) {
-        if (this.#repoSupabase && this.#modo === 'supabase') {
-            await this.#repoSupabase.eliminarTipoComponente(id);
-        }
-        await this.#repoLocal.eliminarTipoComponente(id);
-        const snap = await this.#repoLocal.cargarTodo();
-        this.#hidratarCache(snap);
-        this.#notificar();
+        const repo = this.#getRepoActivo();
+        await repo.eliminarTipoComponente(id);
+        await this.#recargarDesdeRepoActivo();
     }
 
     async guardarPlantilla(plantillaData) {
@@ -745,13 +730,9 @@ class DataStoreService {
             throw new Error('La plantilla debe tener al menos una sección con campos.');
         }
 
-        if (this.#repoSupabase && this.#modo === 'supabase') {
-            await this.#repoSupabase.guardarPlantilla(plantilla);
-        }
-        await this.#repoLocal.guardarPlantilla(plantilla);
-        const snap = await this.#repoLocal.cargarTodo();
-        this.#hidratarCache(snap);
-        this.#notificar();
+        const repo = this.#getRepoActivo();
+        await repo.guardarPlantilla(plantilla);
+        await this.#recargarDesdeRepoActivo();
         return plantilla;
     }
 
@@ -761,12 +742,8 @@ class DataStoreService {
         if (objetivo && objetivo.usar_como_remito && remitos.length <= 1) {
             throw new Error('Debe quedar al menos una plantilla disponible como Remito Principal.');
         }
-        if (this.#repoSupabase && this.#modo === 'supabase') {
-            await this.#repoSupabase.eliminarPlantilla(id);
-        }
-        await this.#repoLocal.eliminarPlantilla(id);
-        const snap = await this.#repoLocal.cargarTodo();
-        this.#hidratarCache(snap);
-        this.#notificar();
+        const repo = this.#getRepoActivo();
+        await repo.eliminarPlantilla(id);
+        await this.#recargarDesdeRepoActivo();
     }
 }
