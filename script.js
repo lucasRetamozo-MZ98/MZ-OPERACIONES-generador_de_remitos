@@ -508,13 +508,24 @@ function renderForm() {
     const campos = RemitoFactory.getCamposFormulario(plantilla, TODAY);
     const syncGroup = plantilla.config.sincronizarCodigos ? `sync_${plantilla.id}` : null;
     let numeroSincronizado = null;
+    let currentCardBody = null;
 
     campos.forEach(campo => {
         if (campo.tipoControl === 'separador') {
-            const sep = document.createElement('div');
-            sep.className = 'form-section-divider';
-            sep.textContent = campo.label;
-            container.appendChild(sep);
+            const card = document.createElement('div');
+            card.className = 'form-section-card';
+
+            const header = document.createElement('div');
+            header.className = 'form-section-card-header';
+            header.textContent = campo.icono ? `${campo.icono} ${campo.label}` : campo.label;
+
+            const body = document.createElement('div');
+            body.className = 'form-section-card-body';
+
+            card.appendChild(header);
+            card.appendChild(body);
+            container.appendChild(card);
+            currentCardBody = body;
             return;
         }
 
@@ -559,7 +570,7 @@ function renderForm() {
             `;
         }
 
-        container.appendChild(group);
+        (currentCardBody || container).appendChild(group);
     });
 
     updatePreview();

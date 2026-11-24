@@ -501,6 +501,42 @@ body {
     background: var(--cp);
 }
 
+.btn-add-comp-bottom {
+    width: 100%;
+    justify-content: center;
+    padding: 9px 12px;
+    font-size: 0.8rem;
+    border-radius: 5px;
+    margin-top: 2px;
+}
+
+/* ── Tarjetas de Sección en el Formulario Lateral ────────────────── */
+.form-section-card {
+    background: #f8fafc;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    margin-top: 14px;
+    margin-bottom: 14px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+
+.form-section-card-header {
+    background: var(--ca);
+    color: var(--cp);
+    font-size: 0.78rem;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 8px 12px;
+    border-bottom: 1px solid #cbd5e1;
+    border-left: 4px solid var(--cs);
+}
+
+.form-section-card-body {
+    padding: 12px 12px 4px 12px;
+}
+
 .comp-adicional-card {
     background: #f8fafc;
     border: 1px solid #cbd5e1;

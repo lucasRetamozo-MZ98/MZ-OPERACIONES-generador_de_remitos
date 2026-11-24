@@ -550,24 +550,51 @@ class RemitoFactory {
         const flujo = plantilla.tipo_flujo || 'entrega';
         const campos = [];
 
+        // 1. Bloque de Datos de Asignación / Responsables (siempre primero y separado)
         if (flujo === 'traslado') {
             campos.push(
+                { id: '__sep_traslado', label: 'Datos de Traslado', tipoControl: 'separador', icono: '🔄' },
                 { id: 'nombre1', label: 'Nombre ENTREGA', tipoControl: 'texto', placeholder: 'Ejemplo: Juan Pérez' },
                 { id: 'rol1', label: 'Área ENTREGA', tipoControl: 'area' },
                 { id: 'nombre2', label: 'Nombre RECIBE', tipoControl: 'texto', placeholder: 'Ejemplo: Mario Araujo' },
-                { id: 'rol2', label: 'Área RECIBE', tipoControl: 'area' }
+                { id: 'rol2', label: 'Área RECIBE', tipoControl: 'area' },
+                { id: 'fecha', label: 'Fecha', tipoControl: 'fecha', def: todayFecha, placeholder: `Ejemplo: ${todayFecha}` }
             );
+        } else if (flujo === 'baja') {
+            campos.push(
+                { id: '__sep_baja', label: 'Datos de Devolución / Baja', tipoControl: 'separador', icono: '📋' },
+                { id: 'nombre', label: 'Nombre Quien Devuelve', tipoControl: 'texto', placeholder: 'Ejemplo: Mario Araujo' },
+                { id: 'area', label: 'Área', tipoControl: 'area' },
+                { id: 'fecha', label: 'Fecha', tipoControl: 'fecha', def: todayFecha, placeholder: `Ejemplo: ${todayFecha}` }
+            );
+        } else {
+            if (cfg.incluirDatosAsignacion) {
+                campos.push(
+                    { id: '__sep_asignacion', label: 'Datos de Asignación', tipoControl: 'separador', icono: '👤' },
+                    { id: 'nombre', label: 'Asignado a', tipoControl: 'texto', placeholder: 'Ejemplo: Mario Araujo' },
+                    { id: 'area', label: 'Área / Equipo', tipoControl: 'area' }
+                );
+                if (cfg.mostrarEmailAsignacion) {
+                    campos.push({ id: 'email', label: 'Email', tipoControl: 'texto', placeholder: 'Ejemplo: usuario@motozuni.com.ar' });
+                }
+                campos.push({ id: 'fecha', label: 'Fecha', tipoControl: 'fecha', def: todayFecha, placeholder: `Ejemplo: ${todayFecha}` });
+            } else {
+                campos.push(
+                    { id: '__sep_asignacion', label: 'Datos Generales', tipoControl: 'separador', icono: '📅' },
+                    { id: 'fecha', label: 'Fecha', tipoControl: 'fecha', def: todayFecha, placeholder: `Ejemplo: ${todayFecha}` }
+                );
+            }
         }
 
-        // Campos de cada sección de la plantilla
-        (cfg.secciones || []).forEach((sec, idx) => {
-            if (cfg.secciones.length > 1) {
-                campos.push({
-                    id: `__sep_${sec.id}_${idx}`,
-                    label: sec.opcional ? `${sec.titulo} (Opcional)` : sec.titulo,
-                    tipoControl: 'separador'
-                });
-            }
+        // 2. Bloques de cada Componente / Sección de la plantilla
+        const secciones = cfg.secciones || [];
+        secciones.forEach((sec, idx) => {
+            campos.push({
+                id: `__sep_${sec.id}_${idx}`,
+                label: sec.opcional ? `${sec.titulo} (Opcional)` : sec.titulo,
+                tipoControl: 'separador',
+                icono: '🧩'
+            });
 
             if (sec.tieneCodigo) {
                 campos.push({
@@ -590,34 +617,9 @@ class RemitoFactory {
                     opciones: Array.isArray(c.opciones) ? c.opciones : []
                 });
             });
-        });
 
-        // Campos de asignación / responsable / fecha
-        if (flujo === 'baja') {
-            campos.push(
-                { id: 'nombre', label: 'Nombre Quien Devuelve', tipoControl: 'texto', placeholder: 'Ejemplo: Mario Araujo' },
-                { id: 'area', label: 'Área', tipoControl: 'area' },
-                { id: 'fecha', label: 'Fecha', tipoControl: 'fecha', def: todayFecha, placeholder: `Ejemplo: ${todayFecha}` }
-            );
-        } else if (flujo === 'traslado') {
-            campos.push(
-                { id: 'fecha', label: 'Fecha', tipoControl: 'fecha', def: todayFecha, placeholder: `Ejemplo: ${todayFecha}` }
-            );
-        } else {
-            if (cfg.incluirDatosAsignacion) {
-                campos.push(
-                    { id: 'nombre', label: 'Asignado a', tipoControl: 'texto', placeholder: 'Ejemplo: Mario Araujo' },
-                    { id: 'area', label: 'Área / Equipo', tipoControl: 'area' }
-                );
-                if (cfg.mostrarEmailAsignacion) {
-                    campos.push({ id: 'email', label: 'Email', tipoControl: 'texto', placeholder: 'Ejemplo: usuario@motozuni.com.ar' });
-                }
-                campos.push({ id: 'fecha', label: 'Fecha', tipoControl: 'fecha', def: todayFecha, placeholder: `Ejemplo: ${todayFecha}` });
-            } else {
-                campos.push({ id: 'fecha', label: 'Fecha', tipoControl: 'fecha', def: todayFecha, placeholder: `Ejemplo: ${todayFecha}` });
-            }
-
-            if (cfg.incluirNotaAdicional) {
+            // Si es la última sección y hay nota adicional, incluirla dentro de este bloque de componente
+            if (idx === secciones.length - 1 && flujo === 'entrega' && cfg.incluirNotaAdicional) {
                 campos.push({
                     id: 'nota',
                     label: 'Nota Adicional',
@@ -625,6 +627,16 @@ class RemitoFactory {
                     placeholder: cfg.notaPlaceholder || 'Ejemplo: Observaciones adicionales...'
                 });
             }
+        });
+
+        // Fallback si no hubiera secciones pero sí nota adicional
+        if (secciones.length === 0 && flujo === 'entrega' && cfg.incluirNotaAdicional) {
+            campos.push({
+                id: 'nota',
+                label: 'Nota Adicional',
+                tipoControl: 'texto',
+                placeholder: cfg.notaPlaceholder || 'Ejemplo: Observaciones adicionales...'
+            });
         }
 
         return campos;
